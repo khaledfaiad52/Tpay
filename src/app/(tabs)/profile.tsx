@@ -154,6 +154,13 @@ export default function ProfileScreen() {
       <Eyebrow label="Security & account" />
       <Card padded={false}>
         <ListRow
+          title="Cards"
+          showChevron
+          divided
+          testID="profile-cards"
+          onPress={() => router.push('/cards')}
+        />
+        <ListRow
           title="Security centre"
           showChevron
           divided

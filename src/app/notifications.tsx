@@ -160,6 +160,9 @@ function navigateTo(target: NotificationTarget): void {
     case 'benefit':
       router.push({ pathname: '/benefits/[id]', params: { id: target.id } });
       return;
+    case 'card':
+      router.push({ pathname: '/cards/[id]', params: { id: target.id } });
+      return;
     case 'kyc':
       router.push('/kyc');
   }

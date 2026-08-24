@@ -136,7 +136,7 @@ export async function runFlows(page, log) {
   }
 
   for (const [label, expected] of [
-    ['Manage', 'TPay Card is not built yet'],
+    ['Manage', 'Create a virtual card'],
     ['Need something from HR?', 'Employment letter · bank use'],
     ['Next salary · Acme Technologies', 'Payroll cycle open'],
   ]) {
@@ -267,6 +267,18 @@ export async function runFlows(page, log) {
     checkId,
     checkMissing,
     checkValue,
+    tapText,
+    tapId,
+    back,
+    goHome,
+    byTestId,
+    page,
+  });
+
+  await runCardFlows({
+    check,
+    checkId,
+    checkMissing,
     tapText,
     tapId,
     back,
@@ -857,4 +869,219 @@ async function runAccountFlows({
   await home();
   await tapId('tab-send');
   await checkMissing('A verified account sees no verification warning', 'Verify your identity');
+}
+
+/**
+ * Phase 5B — TPay Card.
+ *
+ * The card is not a wallet of its own: every check here that touches money
+ * checks the one shared balance. Freeze, controls and limits are exercised by
+ * actually trying to pay, through the same service call a card processor
+ * would drive.
+ */
+async function runCardFlows({
+  check,
+  checkId,
+  checkMissing,
+  tapText,
+  tapId,
+  back,
+  goHome,
+  byTestId,
+  page,
+}) {
+  await goHome();
+  const home = async () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (await byTestId('tab-index').count()) break;
+      await back();
+    }
+    await tapId('tab-index');
+  };
+  const openCard = async () => {
+    await home();
+    await tapText('Manage');
+    await tapId('card-face-card_primary');
+  };
+
+  // ---- Card overview -------------------------------------------------------
+  await tapText('Manage');
+  await check('Home → Cards', 'Create a virtual card');
+  await check('The physical card shows its number', '•••• •••• •••• 4429');
+  await check('The physical card is active', 'Active');
+  await check('A virtual card is listed', 'Virtual card');
+  await check('The virtual card is online only', 'Online only');
+  await check('Cards state the one-balance rule', 'Every card spends from your TPay balance');
+  await check('Cards say there is no card top-up', 'no separate card top-up');
+  await checkId('Cards show the shared balance', 'cards-balance');
+
+  await tapId('cards-create-virtual');
+  await check('Creating a virtual card confirms', 'Virtual card •••• ');
+
+  // ---- Card detail ---------------------------------------------------------
+  await tapId('card-face-card_primary');
+  await check('Cards → Physical card', 'Spends from your TPay balance');
+  await check('The card screen names the format', 'Physical card');
+  await check('The card number is masked until asked for', '•••• •••• •••• 4429');
+  await check('The card shows spending against a limit', 'Spent this month');
+  await check('The card lists its settings', 'Online payments');
+  await check('The card offers ATM control', 'ATM withdrawals');
+  await check('The card offers international control', 'International payments');
+  await check('The card offers spending limits', 'Spending limits');
+  await check('The card offers a PIN change', 'Change PIN');
+  await check('The card can be reported', 'Report lost or stolen');
+  await check('The card lists its own activity', 'Card activity');
+  await check('Card activity shows a real purchase', 'Jarir Bookstore');
+
+  // The shared balance the card screen shows must equal the wallet's.
+  await checkId('The card screen shows the shared balance', 'card-balance');
+
+  await tapId('card-show-details');
+  await check('Revealing details is time-limited', 'shown for 60 seconds');
+  await check('Showing details reveals the full number', '4271 8842 9910 4429');
+
+  // ---- A card payment moves the one balance -------------------------------
+  await home();
+  await tapId('tab-wallet');
+  await check('The wallet balance before paying', '$8,250.00');
+
+  await openCard();
+  await tapId('card-demo-in-store');
+  await check('An in-store payment is approved', 'Approved — Panda Hypermarket');
+
+  await home();
+  await tapId('tab-wallet');
+  await check('The card payment came out of the wallet balance', '$8,226.00');
+
+  await home();
+  await tapId('home-view-all');
+  await check('The card payment is in the one ledger', 'Panda Hypermarket');
+  await tapId('filter-card');
+  await check('It is filed as card activity', 'Panda Hypermarket');
+  await tapId('filter-all');
+
+  // ---- Freeze actually blocks card activity -------------------------------
+  await openCard();
+  await tapId('card-toggle-freeze');
+  await check('Freezing the card confirms', 'All payments are blocked');
+  await check('The card face reads as frozen', 'Frozen');
+  await check('The frozen face says payments are blocked', 'All payments are blocked while this card is frozen');
+
+  await tapId('card-demo-in-store');
+  await check('A frozen card declines a payment', 'Declined — This card is frozen');
+
+  await home();
+  await tapId('tab-wallet');
+  await check('A declined payment did not move the balance', '$8,226.00');
+
+  await openCard();
+  await tapId('card-toggle-freeze');
+  await check('Unfreezing the card confirms', 'Payments work again');
+  await tapId('card-demo-in-store');
+  await check('An unfrozen card pays again', 'Approved — Panda Hypermarket');
+
+  // ---- Controls decide what the card may do -------------------------------
+  await tapId('card-demo-abroad');
+  await check('International payments are off by default', 'International payments are turned off');
+  await tapId('card-control-international');
+  await page.waitForTimeout(1600);
+  await tapId('card-demo-abroad');
+  await check('Turning the control on lets it through', 'Approved — Heathrow Express');
+
+  await tapId('card-control-online');
+  await page.waitForTimeout(1600);
+  await tapId('card-demo-online');
+  await check('Turning online payments off declines them', 'Online payments are turned off');
+
+  // ---- Spending limits ----------------------------------------------------
+  await tapId('card-limits');
+  await check('Card → Spending limits', 'Monthly limit');
+  await check('The limit screen shows the shared balance', 'is shared with every other way you pay');
+  await byTestId('card-limit-monthly').fill('50');
+  await tapId('card-limits-save');
+  await check('Saving a limit confirms', 'Spending limits updated');
+  await tapId('card-demo-in-store');
+  await check('A payment over the limit is declined', 'monthly spending limit');
+
+  // ---- PIN ----------------------------------------------------------------
+  await tapId('card-change-pin');
+  await check('Card → Change PIN', 'New PIN');
+  await check('The PIN screen is honest about the issuer', 'No card issuer is connected yet');
+  await byTestId('card-pin-new').fill('1111');
+  await check('A repeated PIN is rejected', 'not the same digit four times');
+  await byTestId('card-pin-new').fill('4193');
+  await byTestId('card-pin-confirm').fill('4193');
+  await tapId('card-pin-save');
+  await check('Setting a PIN says what actually happened', 'reaches your card once an issuer');
+
+  // ---- Replace: cancelled card, pending replacement ----------------------
+  await openCard();
+  await tapId('card-report');
+  await check('Card → Report lost or stolen', 'What happened?');
+  await check('It warns that reporting cancels the card', 'cancels this card straight away');
+  await check('It points at the account-wide freeze too', 'freeze the whole account in Security');
+  await tapId('replace-reason-stolen');
+  await tapId('replace-submit');
+  await check('Reporting confirms', 'A replacement is on its way');
+  await check('The replacement card is on its way', 'On its way');
+  await check('The replacement shows its delivery stage', 'Ordered');
+  await check('The replacement cannot be used yet', 'cannot be used until it arrives');
+
+  await tapId('card-demo-in-store');
+  await check('A pending card declines a payment', 'has not arrived yet');
+
+  await tapId('card-activate');
+  await check('Activating the delivered card confirms', 'Card activated');
+  await check('The activated card is active', 'Active');
+  await tapId('card-demo-in-store');
+  await check('The activated card pays', 'Approved — Panda Hypermarket');
+
+  await home();
+  await tapText('Manage');
+  await check('The cancelled card is listed as cancelled', 'Cancelled');
+  await check('It says why it was cancelled', 'Reported stolen');
+
+  // ---- An account freeze blocks every card at once ------------------------
+  await home();
+  await tapId('tab-profile');
+  await tapId('profile-security');
+  await tapId('security-freeze');
+  await check('Freezing the account confirms', 'Account frozen');
+
+  await home();
+  await tapText('Manage');
+  await checkId('Cards warn that the account is frozen', 'cards-restriction');
+  await check('The account freeze is explained', 'cards and transfers are blocked');
+  await check('It names the way out', 'Unfreeze in Security');
+
+  await home();
+  await tapId('tab-send');
+  await checkId('Send is blocked while the account is frozen', 'send-restriction-hub');
+
+  await home();
+  await tapId('tab-wallet');
+  await tapId('wallet-exchange');
+  await byTestId('exchange-from').fill('100');
+  await page.waitForTimeout(1800);
+  await checkId('Exchange is blocked while the account is frozen', 'exchange-restriction');
+  await back();
+
+  await home();
+  await tapId('tab-wallet');
+  await tapId('wallet-account-details');
+  await back();
+  await tapId('account-row-acc_usd');
+  await tapId('account-deposit');
+  await checkId('Add money says the account is frozen', 'add-money-restriction');
+  await back();
+
+  await home();
+  await tapId('tab-profile');
+  await tapId('profile-security');
+  await tapId('security-freeze');
+  await check('Unfreezing the account confirms', 'Account unfrozen');
+
+  await home();
+  await tapId('tab-send');
+  await checkMissing('Send works again once unfrozen', 'Your account is frozen');
 }

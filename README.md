@@ -12,7 +12,7 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 
 ---
 
-## Status — Phase 5A complete
+## Status — Phase 5B complete
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -21,11 +21,12 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | 3 | Send Money — recipient → amount → review → confirmation → success | **Done** |
 | 4 | Salary, employer, benefits, documents, requests | **Done** |
 | 5A | Identity verification, Profile, Security, Support, notifications | **Done** |
-| 5B | TPay Card — details, freeze, card activity | Not started |
+| 5B | TPay Card — cards, details, freeze, controls, limits, replacement | **Done** |
 | 6 | Polish, testing, error/loading/empty states across the app | Not started |
 
-TPay Card is the one screen still standing as a routed placeholder, so
-navigation and back navigation work end to end today.
+Every screen in the approved design is now built. Authentication (login,
+signup, OTP) is a separate future phase and is deliberately not implemented —
+there is no fake production auth anywhere in this repository.
 
 ---
 
@@ -46,6 +47,8 @@ npm start          # Expo dev server — press i / a, or scan the QR code
 | `npm test` | Unit tests (`node --test`, no test framework dependency) |
 | `npm run test:e2e` | End-to-end flows against a web build (see below) |
 | `npm run export:web` | Static web build into `dist/` |
+| `npm run export:web:e2e` | Web build with the demo flags on, for the E2E flows |
+| `npm run test:e2e:production` | Asserts no demo control ships without the flags |
 
 Requires Node 22+ (the unit tests run TypeScript directly via type stripping).
 The app targets iOS and Android; the web target is used for review and
@@ -56,10 +59,19 @@ automated checks.
 ```bash
 npm test                                   # unit tests
 
-npm run export:web                         # then, in a second shell:
+npm run export:web:e2e                     # then, in a second shell:
 npx http-server dist -p 4173
 npm run test:e2e
+
+npm run export:web                         # a build with no demo flags:
+npm run test:e2e:production                # proves no demo control ships
 ```
+
+The flows need the demo seams (a reviewer's verdict, a card at a till), so
+`export:web:e2e` builds with `EXPO_PUBLIC_ENABLE_KYC_DEMO` and
+`EXPO_PUBLIC_ENABLE_CARD_DEMO` set. `test:e2e:production` is the other half of
+that bargain: it runs against a build with the flags absent and asserts that
+every demo control is gone while the screens themselves still work.
 
 Unit tests live beside the code they cover (`*.test.ts`) and run on Node's
 built-in runner — `test/alias-loader.mjs` teaches Node the `@/…` alias so tests
@@ -70,8 +82,9 @@ Transactions → Transaction detail → Send Money (recipient, amount, review,
 processing, success, failure and transfer detail) → Salary, payslips,
 employment, documents, requests and benefits → Profile, username, Security,
 trusted devices, notifications, Support and identity verification through
-every state, with back navigation at each step and balance assertions after
-every transfer.
+every state → Cards, card details, freeze, controls, limits, PIN, replacement
+and activation, with back navigation at each step and balance assertions after
+every transfer and every card payment.
 
 Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
@@ -104,7 +117,8 @@ src/
     wallet/         wallet, deposit and exchange sections
     send/           the Send Money flow's state, steps and outcomes
     work/           salary, document and request presentation
-    account/        verification status, steps and demo callbacks
+    account/        verification status, steps, restrictions and demo callbacks
+    card/           card faces, spend meter, delivery tracker, card presentation
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
@@ -218,6 +232,23 @@ breached, `TransferLimitExceededError` carries the whole limit — the amount,
 the explanation and the single action that lifts it — so the screen explains
 rather than just refusing.
 
+### One account state gates every movement of money
+
+A freeze is not a flag each screen interprets for itself. `securityService`
+owns the account state and `src/services/mock/accountGuard.ts` is the single
+check every money-moving service calls:
+
+```ts
+requireActiveAccount();   // throws AccountFrozenError with the restriction
+```
+
+`quoteTransfer`, `createTransfer`, `quoteExchange`, `executeExchange`,
+`authorizePurchase` and `unfreezeCard` all go through it, and each one checks
+again at the point of commitment — a freeze applied while the user sat on a
+review screen still stops the money. `AccountFrozenError` carries the
+restriction, so `RestrictionNotice` shows the same explanation and the same
+route out of it on every screen.
+
 ### Verification, all seven states
 
 `kycService` walks personal information → identity document → review, and
@@ -233,6 +264,14 @@ reviewer outcome. It goes through `handleKycCallback()` — the seam a real
 webhook lands on — rather than reaching into the store, and drops out with the
 mock adapter.
 
+### Password policy is configuration, not code
+
+`securityService.getPasswordPolicy()` publishes the rules (10 characters, a
+letter and a number) as data, and both the change-password screen and the
+adapter judge a password through the same `meetsRequirement` helper. Neither
+restates the policy, so a password can never look acceptable in the UI and be
+refused by the service. Changing the minimum is one edit in the adapter.
+
 ### Biometrics are claimed only when they exist
 
 `BiometricAuthenticator` is a separate contract from `SecurityService`,
@@ -245,6 +284,38 @@ preference and the screen says plainly that the device cannot honour it yet.
 The transfer confirmation seam (`TransferConfirmation`) already carries
 `method` and an optional attestation `token`, so connecting a native module is
 a service swap, not a flow change.
+
+### The card is not a second wallet
+
+`TPay Wallet → one balance → TPay Card.` `Card` has no `balance` field, by
+design, and `cardService.getSpending()` reports `availableBalance` straight
+from the wallet. A card payment debits a wallet account and writes into the
+one transaction ledger, tagged with `cardId` — there is no second ledger, so a
+purchase appears in Wallet transactions and in the card's own view because it
+is the same row.
+
+Five states, and no more: `active`, `frozen`, `pending`, `expired`,
+`cancelled`. An account with no card has no card object, which is a different
+thing from a card that exists and cannot be used.
+
+Freezing is enforced, not decorative. `authorizePurchase` refuses a frozen,
+pending, expired or cancelled card before consulting any control, then checks
+the controls (online, ATM, international), then the limits, then the shared
+balance — and the account-level freeze outranks all of it. A refusal never
+touches the balance and never writes a transaction.
+
+### Card security is a seam, not a claim
+
+`CardAuthorization` carries `method: 'tap' | 'pin' | 'biometric' | 'device' |
+'3ds'` and an optional attestation token — the same shape as
+`TransferConfirmation`. Every card action that would need a real check
+(revealing the full number, activating a delivered card) already takes one,
+and today records `tap` plainly. Nothing pretends a PIN pad, a face, a device
+attestation or a 3-D Secure challenge has run: the PIN screen validates a PIN
+and says outright that no issuer is connected to send it to.
+
+The full card number is never stored. `revealCardDetails` generates it on
+demand behind an authorization and stamps it with an expiry.
 
 ### One support surface
 

@@ -1,6 +1,12 @@
 import { useCallback } from 'react';
 
-import { services, type KycState, type Recipient, type TransferLimit } from '@/services';
+import {
+  services,
+  type AccountState,
+  type KycState,
+  type Recipient,
+  type TransferLimit,
+} from '@/services';
 import type { Account, Money } from '@/types';
 import { useAsyncData, type AsyncResult } from './useAsyncData';
 
@@ -12,14 +18,17 @@ export type SendHubData = {
   /** Verification state and the ceiling it puts on this user's transfers. */
   readonly kyc: KycState;
   readonly limit: TransferLimit;
+  /** Whether the account is allowed to move money at all. */
+  readonly accountState: AccountState;
 };
 
 async function loadSendHub(): Promise<SendHubData> {
-  const [accounts, recipients, kyc, limit] = await Promise.all([
+  const [accounts, recipients, kyc, limit, accountState] = await Promise.all([
     services.account.listAccounts(),
     services.transfer.listRecipients(),
     services.kyc.getKycStatus(),
     services.transfer.getSendingLimit(),
+    services.security.getAccountState(),
   ]);
   return {
     accounts,
@@ -27,6 +36,7 @@ async function loadSendHub(): Promise<SendHubData> {
     recipients,
     kyc,
     limit,
+    accountState,
   };
 }
 

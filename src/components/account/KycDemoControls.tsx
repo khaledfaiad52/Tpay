@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { Eyebrow, Tappable, Text } from '@/components/ui';
-import { services } from '@/services';
+import { appConfig, services } from '@/services';
 import { colors, radius } from '@/theme';
 
 /**
@@ -40,10 +40,16 @@ export type KycDemoControlsProps = {
  * whole component drops out when a real verification backend is wired in.
  */
 export function KycDemoControls({ onApplied }: KycDemoControlsProps) {
+  // Off unless EXPO_PUBLIC_ENABLE_KYC_DEMO=true, so a production build never
+  // renders it. The callback abstraction underneath is unaffected.
+  const enabled = appConfig.demo.kyc;
+
   const apply = async (providerStatus: string, reason?: string) => {
     await services.kyc.handleKycCallback({ sessionId: 'kyc_demo', providerStatus, reason });
     onApplied();
   };
+
+  if (!enabled) return null;
 
   return (
     <View style={styles.block}>

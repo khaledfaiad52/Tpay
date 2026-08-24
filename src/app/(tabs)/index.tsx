@@ -128,8 +128,12 @@ export default function HomeScreen() {
       <FadeInUp delay={200}>
         <CardSection
           card={data.card}
-          onManage={() => router.push('/card')}
-          onOpenCard={() => router.push('/card')}
+          onManage={() => router.push('/cards')}
+          onOpenCard={() =>
+            data.card
+              ? router.push({ pathname: '/cards/[id]', params: { id: data.card.id } })
+              : router.push('/cards')
+          }
         />
       </FadeInUp>
 

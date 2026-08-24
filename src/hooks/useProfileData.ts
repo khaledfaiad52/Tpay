@@ -1,5 +1,11 @@
 import { services, unavailableBiometricAuthenticator, unreadCount } from '@/services';
-import type { KycState, KycStep, TransferLimit } from '@/services';
+import type {
+  AccountState,
+  KycState,
+  KycStep,
+  PasswordPolicy,
+  TransferLimit,
+} from '@/services';
 import type {
   AppNotification,
   BiometricCapability,
@@ -64,21 +70,33 @@ export type SecurityData = {
   /** What this device can actually do — never assumed. */
   readonly biometrics: BiometricCapability;
   readonly kyc: KycState;
+  /** Whether money may move at all right now. */
+  readonly accountState: AccountState;
 };
 
 async function loadSecurity(): Promise<SecurityData> {
-  const [settings, devices, activity, biometrics, kyc] = await Promise.all([
+  const [settings, devices, activity, biometrics, kyc, accountState] = await Promise.all([
     services.security.getSettings(),
     services.security.listDevices(),
     services.security.listLoginActivity(),
     unavailableBiometricAuthenticator.getCapability(),
     services.kyc.getKycStatus(),
+    services.security.getAccountState(),
   ]);
-  return { settings, devices, activity, biometrics, kyc };
+  return { settings, devices, activity, biometrics, kyc, accountState };
 }
 
 export function useSecurityData(): AsyncResult<SecurityData> {
   return useAsyncData(loadSecurity);
+}
+
+async function loadPasswordPolicy(): Promise<PasswordPolicy> {
+  return services.security.getPasswordPolicy();
+}
+
+/** The password rules, from the service — never restated in the screen. */
+export function usePasswordPolicy(): AsyncResult<PasswordPolicy> {
+  return useAsyncData(loadPasswordPolicy);
 }
 
 async function loadNotifications(): Promise<readonly AppNotification[]> {

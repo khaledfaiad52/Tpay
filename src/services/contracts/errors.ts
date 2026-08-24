@@ -4,7 +4,7 @@
  * onto these.
  */
 import type { CurrencyCode } from '@/types';
-import type { PasswordProblem } from './securityService';
+import type { AccountRestriction, PasswordProblem } from './securityService';
 import type { RecipientKind, TransferLimit } from './transferService';
 
 export class NotFoundError extends Error {
@@ -38,6 +38,53 @@ export class PasswordRejectedError extends Error {
     this.problem = problem;
   }
 }
+
+/**
+ * The account is frozen, so nothing may move.
+ *
+ * Thrown by every service that moves money, from one shared check, so a
+ * freeze cannot be honoured in one place and forgotten in another.
+ */
+export class AccountFrozenError extends Error {
+  readonly restriction: AccountRestriction;
+
+  constructor(restriction: AccountRestriction) {
+    super(restriction.explanation);
+    this.name = 'AccountFrozenError';
+    this.restriction = restriction;
+  }
+}
+
+/**
+ * The card cannot pay for this.
+ *
+ * `code` says which rule stopped it, so the screen can point at the control
+ * the user can actually change rather than showing one generic refusal.
+ */
+export class CardDeclinedError extends Error {
+  readonly code: CardDeclineCode;
+  /** The control or state that would have to change. */
+  readonly remedy?: string;
+
+  constructor(code: CardDeclineCode, message: string, remedy?: string) {
+    super(message);
+    this.name = 'CardDeclinedError';
+    this.code = code;
+    this.remedy = remedy;
+  }
+}
+
+export type CardDeclineCode =
+  | 'card-frozen'
+  | 'card-pending'
+  | 'card-expired'
+  | 'card-cancelled'
+  | 'online-payments-off'
+  | 'atm-withdrawals-off'
+  | 'international-payments-off'
+  | 'contactless-off'
+  | 'monthly-limit-reached'
+  | 'atm-limit-reached';
 
 /** The device cannot do biometrics, or the user declined the prompt. */
 export class BiometricUnavailableError extends Error {

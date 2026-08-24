@@ -1,5 +1,7 @@
 export {
+  AccountFrozenError,
   BiometricUnavailableError,
+  CardDeclinedError,
   InsufficientFundsError,
   NotFoundError,
   PasswordRejectedError,
@@ -7,9 +9,16 @@ export {
   TransferLimitExceededError,
   UnsupportedCorridorError,
 } from './errors';
+export type { CardDeclineCode } from './errors';
 export type { AccountService } from './accountService';
 export type { BenefitsService } from './benefitsService';
-export type { CardService } from './cardService';
+export type {
+  CardAuthorization,
+  CardControlsUpdate,
+  CardLimitsUpdate,
+  CardPurchaseRequest,
+  CardService,
+} from './cardService';
 export type {
   DocumentAccessResult,
   DocumentQuery,
@@ -36,10 +45,17 @@ export type {
 } from './kycService';
 export type { NotificationsService } from './notificationsService';
 export type { RequestsService } from './requestsService';
+export { meetsRequirement } from './securityService';
 export type {
+  AccountRestriction,
+  AccountRestrictionAction,
+  AccountState,
   BiometricAuthenticator,
   PasswordChange,
+  PasswordPolicy,
   PasswordProblem,
+  PasswordRequirement,
+  PasswordRequirementId,
   SecurityService,
 } from './securityService';
 export type {

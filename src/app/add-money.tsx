@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { RestrictionNotice } from '@/components/account';
 import { ScreenHeader } from '@/components/navigation';
 import { DepositMethodRow, HowToDeposit, type DepositMethod } from '@/components/wallet';
 import {
@@ -71,11 +72,18 @@ export default function AddMoneyScreen() {
     );
   }
 
-  const { details, nextSalary } = data.data;
+  const { details, nextSalary, accountState } = data.data;
 
   return (
     <Screen contentStyle={styles.content}>
       <ScreenHeader title="Add money" />
+
+      {accountState.restriction ? (
+        <RestrictionNotice
+          restriction={accountState.restriction}
+          testID="add-money-restriction"
+        />
+      ) : null}
 
       <View style={styles.methods}>
         {METHODS.map((method) => (

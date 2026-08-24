@@ -5,7 +5,7 @@ export {
   filterDocuments,
   mockDocumentsService,
 } from './documentsService';
-export { mockCardService } from './cardService';
+export { declineReason, mockCardService, resetCards } from './cardService';
 export { mockEmploymentService } from './employmentService';
 export {
   buildExchangeQuote,
@@ -35,11 +35,13 @@ export {
 } from './requestsService';
 export { mockSalaryService } from './salaryService';
 export {
+  currentAccountState,
   mockSecurityService,
   passwordProblem,
   resetSecurity,
   unavailableBiometricAuthenticator,
 } from './securityService';
+export { accountCanTransact, accountFreezeError, requireActiveAccount } from './accountGuard';
 export { mockSupportService, resetSupport, supportTopics } from './supportService';
 export { filterTransactions, mockTransactionService } from './transactionService';
 export {

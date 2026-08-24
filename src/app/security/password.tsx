@@ -4,11 +4,12 @@ import { StyleSheet, View } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation';
 import { FormField } from '@/components/send';
-import { Banner, Button, Card, Screen, Text, useToast } from '@/components/ui';
+import { Banner, Button, Card, Screen, Skeleton, Text, useToast } from '@/components/ui';
+import { usePasswordPolicy } from '@/hooks';
 import { Icon } from '@/icons';
-import { PasswordRejectedError, services } from '@/services';
+import { meetsRequirement, PasswordRejectedError, services } from '@/services';
 import type { PasswordProblem } from '@/services';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 
 /** Which field a rejection belongs under. */
 const PROBLEM_FIELD: Record<PasswordProblem, 'current' | 'next'> = {
@@ -18,13 +19,15 @@ const PROBLEM_FIELD: Record<PasswordProblem, 'current' | 'next'> = {
   'same-as-current': 'next',
 };
 
-const RULES: readonly { readonly label: string; readonly test: (value: string) => boolean }[] = [
-  { label: 'At least 10 characters', test: (value) => value.length >= 10 },
-  { label: 'A letter and a number', test: (value) => /[a-zA-Z]/.test(value) && /[0-9]/.test(value) },
-];
-
-/** Change the password. Rules are shown as they are met, not after failure. */
+/**
+ * Change the password.
+ *
+ * The rules come from `securityService.getPasswordPolicy()` and are judged by
+ * the same `meetsRequirement` the adapter uses, so this screen never restates
+ * the policy and cannot drift from it.
+ */
 export default function ChangePasswordScreen() {
+  const policy = usePasswordPolicy();
   const { showToast } = useToast();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -32,8 +35,11 @@ export default function ChangePasswordScreen() {
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<{ field: 'current' | 'next'; message: string }>();
 
+  const requirements = policy.data?.requirements ?? [];
   const mismatch = confirm !== '' && confirm !== next;
-  const rulesMet = RULES.every((rule) => rule.test(next));
+  const rulesMet =
+    policy.data !== undefined &&
+    requirements.every((requirement) => meetsRequirement(requirement.id, next, policy.data));
   const ready = current !== '' && rulesMet && confirm === next;
 
   const save = async () => {
@@ -89,26 +95,31 @@ export default function ChangePasswordScreen() {
         testID="password-confirm"
       />
 
-      <Card padded={false} testID="password-rules">
-        <View style={styles.rules}>
-          {RULES.map((rule) => {
-            const met = rule.test(next);
-            return (
-              <View key={rule.label} style={styles.rule}>
-                <Icon
-                  name={met ? 'check' : 'chevron-right'}
-                  size={14}
-                  color={met ? colors.success : colors.inkFaint}
-                  strokeWidth={met ? 2.6 : 1.9}
-                />
-                <Text variant="caption" color={met ? colors.success : colors.inkMuted}>
-                  {rule.label}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </Card>
+      {policy.status === 'loading' ? (
+        <Skeleton height={72} cornerRadius={radius.card} />
+      ) : (
+        <Card padded={false} testID="password-rules">
+          <View style={styles.rules}>
+            {requirements.map((requirement) => {
+              const met = policy.data !== undefined &&
+                meetsRequirement(requirement.id, next, policy.data);
+              return (
+                <View key={requirement.id} style={styles.rule}>
+                  <Icon
+                    name={met ? 'check' : 'chevron-right'}
+                    size={14}
+                    color={met ? colors.success : colors.inkFaint}
+                    strokeWidth={met ? 2.6 : 1.9}
+                  />
+                  <Text variant="caption" color={met ? colors.success : colors.inkMuted}>
+                    {requirement.label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      )}
 
       <Banner>
         Changing your password signs you out everywhere except this device. Anyone still signed in

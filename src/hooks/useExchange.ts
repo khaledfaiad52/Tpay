@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { services, totalDebit, type ExchangeQuote } from '@/services';
+import {
+  AccountFrozenError,
+  services,
+  totalDebit,
+  type AccountRestriction,
+  type ExchangeQuote,
+} from '@/services';
 import { fromMajor, toMajor, type Account, type Money } from '@/types';
 import { useAsyncData, type AsyncResult } from './useAsyncData';
 
@@ -24,6 +30,8 @@ export type ExchangeState = {
   isSubmitting: boolean;
   /** Set when the amount is unusable or the exchange was rejected. */
   error: string | undefined;
+  /** Set when the account itself is frozen, which blocks the whole screen. */
+  restriction: AccountRestriction | undefined;
   setAmountText: (value: string) => void;
   /** Tidies the amount field once the user leaves it. */
   blurAmount: () => void;
@@ -66,6 +74,7 @@ export function useExchange(): ExchangeState {
   const [amountText, setAmountText] = useState('1000');
   const [quoteEntry, setQuoteEntry] = useState<{ key: string; quote: ExchangeQuote }>();
   const [failure, setFailure] = useState<string>();
+  const [restriction, setRestriction] = useState<AccountRestriction>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Ticks once a second so the rate countdown stays live.
   const [now, setNow] = useState(() => Date.now());
@@ -110,8 +119,14 @@ export function useExchange(): ExchangeState {
         (quote) => {
           if (!cancelled) setQuoteEntry({ key: pendingKey, quote });
         },
-        () => {
-          if (!cancelled) setFailure("We couldn't get a rate just now. Try again.");
+        (cause: unknown) => {
+          if (cancelled) return;
+          if (cause instanceof AccountFrozenError) {
+            setRestriction(cause.restriction);
+            setFailure(cause.message);
+            return;
+          }
+          setFailure("We couldn't get a rate just now. Try again.");
         },
       );
 
@@ -155,6 +170,7 @@ export function useExchange(): ExchangeState {
       setAmountText('');
       return result.targetAmount;
     } catch (cause) {
+      if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
       setFailure(cause instanceof Error ? cause.message : 'That exchange did not go through.');
       return undefined;
     } finally {
@@ -184,6 +200,7 @@ export function useExchange(): ExchangeState {
     canConfirm: Boolean(quote) && !insufficient && secondsRemaining > 0,
     isSubmitting,
     error: insufficient ? 'That is more than this account holds.' : failure,
+    restriction,
     setAmountText: changeAmount,
     blurAmount,
     setSourceAccountId,

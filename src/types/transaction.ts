@@ -21,6 +21,13 @@ export type Transaction = {
   readonly status: TransactionStatus;
   /** Account the movement settled against. */
   readonly accountId?: string;
+  /**
+   * The card that made the payment, for `card` movements. Card activity is
+   * kept in this one ledger and tagged, never split into a second one.
+   */
+  readonly cardId?: string;
+  /** Where the card was used, when the merchant is not the description. */
+  readonly merchantCategory?: string;
   readonly reference?: string;
   /** Counterparty institution, shown on the detail screen when known. */
   readonly counterpartyBank?: string;

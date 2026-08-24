@@ -6,6 +6,7 @@ import type {
 } from '@/services/contracts';
 import { minorUnitFactor, type CurrencyCode, type Money, type Transaction } from '@/types';
 import { InsufficientFundsError, QuoteExpiredError } from '@/services/contracts';
+import { accountFreezeError } from './accountGuard';
 import { adjustBalance, findAccount, recordTransactions } from './data/store';
 import { respond } from './latency';
 
@@ -108,12 +109,19 @@ export const mockFxService: FxService = {
   },
 
   quoteExchange: (request) => {
+    const frozen = accountFreezeError();
+    if (frozen) return Promise.reject(frozen);
+
     const quote = buildExchangeQuote(request);
     exchangeQuotes.set(quote.id, quote);
     return respond('fxService.quoteExchange', quote);
   },
 
   executeExchange: (quoteId) => {
+    // Re-checked at booking: a freeze applied after the quote must still stop it.
+    const frozen = accountFreezeError();
+    if (frozen) return Promise.reject(frozen);
+
     const quote = exchangeQuotes.get(quoteId);
     if (!quote) return Promise.reject(new Error('Unknown exchange quote'));
     if (Date.parse(quote.expiresAt) < Date.now()) return Promise.reject(new QuoteExpiredError());

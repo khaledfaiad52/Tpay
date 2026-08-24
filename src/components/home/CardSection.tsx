@@ -2,36 +2,19 @@ import { StyleSheet, View } from 'react-native';
 
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import {
+  CARD_FORMAT_LABELS,
+  CARD_STATUS_LABELS,
+  CARD_STATUS_TONES_ON_DARK,
+} from '@/components/card';
 import { Badge, Card as Surface, EmptyState, SectionHeader, Text } from '@/components/ui';
-import type { BadgeTone } from '@/components/ui';
 import { colors } from '@/theme';
-import type { Card, CardStatus } from '@/types';
+import type { Card } from '@/types';
 
 export type CardSectionProps = {
   card: Card | null;
   onManage: () => void;
   onOpenCard: () => void;
-};
-
-const STATUS_LABELS: Record<CardStatus, string> = {
-  active: 'Active',
-  frozen: 'Frozen',
-  'not-issued': 'Not issued',
-  blocked: 'Blocked',
-  expired: 'Expired',
-};
-
-const STATUS_TONES: Record<CardStatus, BadgeTone> = {
-  active: 'onDark',
-  frozen: 'pending',
-  'not-issued': 'neutral',
-  blocked: 'danger',
-  expired: 'danger',
-};
-
-const FORMAT_LABELS: Record<Card['format'], string> = {
-  physical: 'Physical',
-  virtual: 'Virtual',
 };
 
 /**
@@ -51,13 +34,16 @@ export function CardSection({ card, onManage, onOpenCard }: CardSectionProps) {
           <CardChip />
           <View style={styles.body}>
             <Text variant="label" color={colors.onDark}>
-              {`TPay Card · ${FORMAT_LABELS[card.format]}`}
+              {`TPay Card · ${CARD_FORMAT_LABELS[card.format]}`}
             </Text>
             <Text variant="captionSm" color={colors.inkOnDarkMuted}>
               {`•••• ${card.last4} · spends from your balance`}
             </Text>
           </View>
-          <Badge label={STATUS_LABELS[card.status]} tone={STATUS_TONES[card.status]} />
+          <Badge
+            label={CARD_STATUS_LABELS[card.status]}
+            tone={CARD_STATUS_TONES_ON_DARK[card.status]}
+          />
         </Surface>
       ) : (
         <EmptyState

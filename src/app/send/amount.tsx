@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { RestrictionNotice } from '@/components/account';
 import { AmountEntry, prefixFor, SourceAccountRow, StepHeader, useSendFlow } from '@/components/send';
 import { CurrencyPicker } from '@/components/wallet';
 import { Button, Card, DetailRow, Screen, Text } from '@/components/ui';
@@ -93,7 +94,9 @@ export default function AmountScreen() {
         )}
       </Card>
 
-      {flow.limitBreach ? (
+      {flow.restriction ? (
+        <RestrictionNotice restriction={flow.restriction} testID="send-restriction" />
+      ) : flow.limitBreach ? (
         <Card tone="gold" testID="send-limit">
           <View style={styles.limit}>
             <Text variant="label" color={colors.warningText}>

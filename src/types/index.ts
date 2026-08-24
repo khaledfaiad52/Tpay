@@ -21,7 +21,19 @@ export type {
   RequestStatus,
   RequestType,
 } from './request';
-export type { Card, CardFormat, CardStatus } from './card';
+export type {
+  Card,
+  CardControls,
+  CardDelivery,
+  CardDeliveryStage,
+  CardFormat,
+  CardReplacement,
+  CardReplacementReason,
+  CardSecrets,
+  CardSpendCategory,
+  CardSpending,
+  CardStatus,
+} from './card';
 export type {
   AccountManager,
   ContractStatus,

@@ -24,6 +24,7 @@ import {
   type Money,
   type Transaction,
 } from '@/types';
+import { accountFreezeError, requireActiveAccount } from './accountGuard';
 import { currentKycStatus } from './kycService';
 import {
   adjustBalance,
@@ -405,6 +406,10 @@ export function buildTransferQuote(
   recipient: Recipient,
   now = Date.now(),
 ): TransferQuote {
+  // A frozen account cannot even be quoted — the user is told why before
+  // entering an amount they will not be allowed to send.
+  requireActiveAccount();
+
   const source = findAccount(request.sourceAccountId);
   if (!source) throw new NotFoundError('Account', request.sourceAccountId);
 
@@ -517,6 +522,11 @@ export const mockTransferService: TransferService = {
   },
 
   createTransfer: ({ quoteId, reference, demoOutcome }) => {
+    // Checked again at the point of booking: a freeze applied while the user
+    // was on the review screen must still stop the money.
+    const frozen = accountFreezeError();
+    if (frozen) return Promise.reject(frozen);
+
     const quote = quotes.get(quoteId);
     if (!quote) return Promise.reject(new NotFoundError('Transfer quote', quoteId));
     if (Date.parse(quote.expiresAt) < Date.now()) {

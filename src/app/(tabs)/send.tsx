@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import { KycStatusCard, presentKyc } from '@/components/account';
+import { KycStatusCard, presentKyc, RestrictionNotice } from '@/components/account';
 import {
   RecentRecipients,
   SendMethodRow,
@@ -97,7 +97,7 @@ export default function SendScreen() {
     );
   }
 
-  const { primary, recipients, kyc, limit } = hub.data;
+  const { primary, recipients, kyc, limit, accountState } = hub.data;
 
   return (
     <Screen contentStyle={styles.content}>
@@ -107,6 +107,10 @@ export default function SendScreen() {
           {`From your TPay balance · ${formatMoney(primary.balance)} available`}
         </Text>
       </View>
+
+      {accountState.restriction ? (
+        <RestrictionNotice restriction={accountState.restriction} testID="send-restriction-hub" />
+      ) : null}
 
       {kyc.status === 'VERIFIED' ? null : (
         <KycStatusCard

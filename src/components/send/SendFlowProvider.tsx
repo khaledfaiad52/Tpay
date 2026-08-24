@@ -2,8 +2,10 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 
 import { parseAmount } from '@/hooks/useExchange';
 import {
+  AccountFrozenError,
   services,
   TransferLimitExceededError,
+  type AccountRestriction,
   type Recipient,
   type RecipientDraft,
   type RecipientKind,
@@ -31,6 +33,8 @@ export type SendFlowState = {
    * it rather than showing a bare error.
    */
   limitBreach: TransferLimit | undefined;
+  /** Set when the account itself is frozen, which outranks any limit. */
+  restriction: AccountRestriction | undefined;
   isQuoting: boolean;
   status: SendFlowStatus;
   result: TransferResult | undefined;
@@ -66,6 +70,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
   const [quote, setQuote] = useState<TransferQuote>();
   const [quoteError, setQuoteError] = useState<string>();
   const [limitBreach, setLimitBreach] = useState<TransferLimit>();
+  const [restriction, setRestriction] = useState<AccountRestriction>();
   const [isQuoting, setIsQuoting] = useState(false);
   const [status, setStatus] = useState<SendFlowStatus>('editing');
   const [result, setResult] = useState<TransferResult>();
@@ -82,6 +87,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuote(undefined);
     setQuoteError(undefined);
     setLimitBreach(undefined);
+    setRestriction(undefined);
     setAmountText('');
     setResult(undefined);
     setSubmitError(undefined);
@@ -109,6 +115,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuote(undefined);
     setQuoteError(undefined);
     setLimitBreach(undefined);
+    setRestriction(undefined);
   }, []);
 
   const changeAmount = useCallback((value: string) => {
@@ -116,6 +123,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuote(undefined);
     setQuoteError(undefined);
     setLimitBreach(undefined);
+    setRestriction(undefined);
   }, []);
 
   const refreshQuote = useCallback(async () => {
@@ -123,6 +131,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setIsQuoting(true);
     setQuoteError(undefined);
     setLimitBreach(undefined);
+    setRestriction(undefined);
     try {
       const next = await services.transfer.quoteTransfer({
         recipientId: recipient.id,
@@ -133,6 +142,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     } catch (cause) {
       setQuote(undefined);
       if (cause instanceof TransferLimitExceededError) setLimitBreach(cause.limit);
+      if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
       setQuoteError(
         cause instanceof Error ? cause.message : "We couldn't price that transfer.",
       );
@@ -153,6 +163,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
         });
         setResult(next);
       } catch (cause) {
+        if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
         setSubmitError(
           cause instanceof Error ? cause.message : 'That transfer did not go through.',
         );
@@ -170,6 +181,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuote(undefined);
     setQuoteError(undefined);
     setLimitBreach(undefined);
+    setRestriction(undefined);
     setResult(undefined);
     setSubmitError(undefined);
     setStatus('editing');
@@ -185,6 +197,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       quote,
       quoteError,
       limitBreach,
+      restriction,
       isQuoting,
       status,
       result,
@@ -207,6 +220,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       quote,
       quoteError,
       limitBreach,
+      restriction,
       isQuoting,
       status,
       result,

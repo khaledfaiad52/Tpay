@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { RestrictionNotice } from '@/components/account';
 import { ScreenHeader } from '@/components/navigation';
 import { CurrencyPicker, ExchangeSide } from '@/components/wallet';
 import {
@@ -98,7 +99,9 @@ export default function ExchangeScreen() {
         </Tappable>
       </View>
 
-      {exchange.error ? (
+      {exchange.restriction ? (
+        <RestrictionNotice restriction={exchange.restriction} testID="exchange-restriction" />
+      ) : exchange.error ? (
         <Card tone="danger" testID="exchange-error">
           <Text variant="caption" color={colors.dangerText}>
             {exchange.error}

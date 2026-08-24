@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { services } from '@/services';
+import { services, type AccountState } from '@/services';
 import type { Account, AccountDetails, Money, Transaction, UpcomingSalary } from '@/types';
 import { useAsyncData, type AsyncResult } from './useAsyncData';
 
@@ -59,16 +59,22 @@ export type AddMoneyData = {
   readonly details: AccountDetails;
   /** Shown as a third, automatic way money arrives. */
   readonly nextSalary: UpcomingSalary | null;
+  /**
+   * Whether the account can be used. Deposit coordinates are still shown when
+   * it cannot, but the user is told first rather than after sending money.
+   */
+  readonly accountState: AccountState;
 };
 
 async function loadAddMoney(): Promise<AddMoneyData> {
   const accounts = await services.account.listAccounts();
   const primary = accounts.find((account) => account.isPrimary) ?? accounts[0];
-  const [details, nextSalary] = await Promise.all([
+  const [details, nextSalary, accountState] = await Promise.all([
     services.account.getAccountDetails(primary.id),
     services.salary.getNextSalary(),
+    services.security.getAccountState(),
   ]);
-  return { details, nextSalary };
+  return { details, nextSalary, accountState };
 }
 
 export function useAddMoneyData(): AsyncResult<AddMoneyData> {

@@ -9,6 +9,7 @@ export type NotificationTarget =
   | { readonly kind: 'requests' }
   | { readonly kind: 'transaction'; readonly id: string }
   | { readonly kind: 'benefit'; readonly id: string }
+  | { readonly kind: 'card'; readonly id: string }
   | { readonly kind: 'kyc' };
 
 export type AppNotification = {

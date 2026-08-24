@@ -14,6 +14,8 @@ import type {
   AccountDetails,
   Benefit,
   Card,
+  CardControls,
+  CardSpendCategory,
   EmployeeDocument,
   EmployeeRequest,
   Employment,
@@ -219,6 +221,8 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-08-16T19:05:00.000Z',
     status: 'completed',
     accountId: 'acc_usd',
+    cardId: 'card_virtual_1',
+    merchantCategory: 'Subscriptions',
   },
   {
     id: 'txn_1004',
@@ -243,6 +247,8 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-08-13T08:12:00.000Z',
     status: 'pending',
     accountId: 'acc_usd',
+    cardId: 'card_primary',
+    merchantCategory: 'Transport',
   },
   {
     id: 'txn_1008',
@@ -299,6 +305,20 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-08-12T17:20:00.000Z',
     status: 'completed',
     accountId: 'acc_sar',
+    cardId: 'card_primary',
+    merchantCategory: 'Everything else',
+  },
+  {
+    id: 'txn_2003',
+    type: 'card',
+    direction: 'debit',
+    description: 'Panda Hypermarket',
+    amount: fromMajor(184.2, 'USD'),
+    occurredAt: '2026-08-19T13:05:00.000Z',
+    status: 'completed',
+    accountId: 'acc_usd',
+    cardId: 'card_primary',
+    merchantCategory: 'Groceries',
   },
 ];
 
@@ -417,15 +437,73 @@ export const mockPayslips: readonly Payslip[] = mockSalaryHistory.map((record) =
   documentId: `doc_${record.payslipId}`,
 }));
 
-export const mockCard: Card = {
-  id: 'card_primary',
-  format: 'physical',
-  status: 'active',
-  last4: '4429',
-  holderName: 'Khaled Faiad',
-  expiry: '09/29',
-  network: 'visa',
-  monthToDateSpend: fromMajor(412.75, 'USD'),
+/**
+ * The cards on the demo account.
+ *
+ * Numbers are masked demo values — no card number here is real, and the full
+ * PAN is produced only by `revealCardDetails` behind an authorization.
+ */
+export const mockCards: readonly Card[] = [
+  {
+    id: 'card_primary',
+    format: 'physical',
+    status: 'active',
+    last4: '4429',
+    holderName: 'Khaled Faiad',
+    expiry: '09/29',
+    network: 'visa',
+    monthToDateSpend: fromMajor(412.75, 'USD'),
+    isPrimary: true,
+  },
+  {
+    id: 'card_virtual_1',
+    format: 'virtual',
+    status: 'active',
+    last4: '8813',
+    holderName: 'Khaled Faiad',
+    expiry: '04/28',
+    network: 'visa',
+    monthToDateSpend: fromMajor(96.4, 'USD'),
+    isPrimary: false,
+  },
+];
+
+/** The card Home and the wallet lead to. */
+export const mockCard: Card = mockCards[0]!;
+
+export const mockCardControls: Record<string, CardControls> = {
+  card_primary: {
+    onlinePayments: true,
+    atmWithdrawals: true,
+    internationalPayments: false,
+    contactlessPayments: true,
+  },
+  card_virtual_1: {
+    onlinePayments: true,
+    // A virtual card has no plastic, so these can never be true for it.
+    atmWithdrawals: false,
+    internationalPayments: true,
+    contactlessPayments: false,
+  },
+};
+
+/** Configurable mock ceilings. A real issuer supplies its own. */
+export const mockCardLimits = {
+  monthly: fromMajor(3_000, 'USD'),
+  atmDaily: fromMajor(500, 'USD'),
+};
+
+export const mockCardCategories: Record<string, readonly CardSpendCategory[]> = {
+  card_primary: [
+    { label: 'Groceries', amount: fromMajor(184.2, 'USD') },
+    { label: 'Transport', amount: fromMajor(112.55, 'USD') },
+    { label: 'Eating out', amount: fromMajor(76.0, 'USD') },
+    { label: 'Everything else', amount: fromMajor(40.0, 'USD') },
+  ],
+  card_virtual_1: [
+    { label: 'Subscriptions', amount: fromMajor(56.4, 'USD') },
+    { label: 'Everything else', amount: fromMajor(40.0, 'USD') },
+  ],
 };
 
 export const mockBenefits: readonly Benefit[] = [
@@ -853,5 +931,15 @@ export const mockNotifications: readonly AppNotification[] = [
     icon: 'shield-check',
     read: true,
     target: { kind: 'benefit', id: 'ben_medical' },
+  },
+  {
+    id: 'ntf_card',
+    title: 'Card payment',
+    body: 'Your card was used for SAR 410.00 at Jarir Bookstore.',
+    occurredAt: '2026-08-12T17:20:00.000Z',
+    tone: 'neutral',
+    icon: 'credit-card',
+    read: true,
+    target: { kind: 'card', id: 'card_primary' },
   },
 ];
