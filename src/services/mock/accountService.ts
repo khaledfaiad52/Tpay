@@ -1,12 +1,13 @@
 import type { AccountService } from '@/services/contracts';
-import { mockAccountDetails, mockAccounts } from './data/fixtures';
+import { mockAccountDetails } from './data/fixtures';
+import { findAccount, getAccounts } from './data/store';
 import { NotFoundError, respond } from './latency';
 
 export const mockAccountService: AccountService = {
-  listAccounts: () => respond('accountService.listAccounts', mockAccounts),
+  listAccounts: () => respond('accountService.listAccounts', getAccounts()),
 
   getAccount: (accountId) => {
-    const account = mockAccounts.find((candidate) => candidate.id === accountId);
+    const account = findAccount(accountId);
     if (!account) return Promise.reject(new NotFoundError('Account', accountId));
     return respond('accountService.getAccount', account);
   },

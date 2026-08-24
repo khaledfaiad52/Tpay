@@ -24,6 +24,7 @@ export function RecentActivity({
         title="Recent activity"
         actionLabel={transactions.length > 0 ? 'View all' : undefined}
         onActionPress={transactions.length > 0 ? onViewAll : undefined}
+        actionTestID="home-view-all"
       />
       {transactions.length === 0 ? (
         <EmptyState

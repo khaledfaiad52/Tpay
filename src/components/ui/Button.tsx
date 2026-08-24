@@ -15,6 +15,7 @@ export type ButtonProps = {
   /** Stretches the button to fill its container. */
   block?: boolean;
   style?: ViewStyle;
+  testID?: string;
 };
 
 const VARIANTS: Record<ButtonVariant, { container: ViewStyle; foreground: string }> = {
@@ -35,6 +36,7 @@ export function Button({
   loading = false,
   block = false,
   style,
+  testID,
 }: ButtonProps) {
   const palette = VARIANTS[variant];
   return (
@@ -43,6 +45,7 @@ export function Button({
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
       onPress={onPress}
+      testID={testID}
       style={StyleSheet.flatten([
         styles.button,
         palette.container,

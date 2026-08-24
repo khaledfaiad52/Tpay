@@ -16,7 +16,7 @@ import {
   type QuickAction,
 } from '@/components/home';
 import { ErrorState, FadeInUp, Screen } from '@/components/ui';
-import { useHomeData } from '@/hooks';
+import { useHomeData, useRefreshOnFocus } from '@/hooks';
 import { colors } from '@/theme';
 import type { Account, Transaction } from '@/types';
 import { greeting } from '@/utils';
@@ -28,6 +28,7 @@ import { greeting } from '@/utils';
  */
 export default function HomeScreen() {
   const home = useHomeData();
+  useRefreshOnFocus(home.reload);
   const [balanceHidden, setBalanceHidden] = useState(false);
 
   const quickActions = useMemo<readonly QuickAction[]>(

@@ -10,8 +10,10 @@ import type { CurrencyCode, Money } from './money';
 export type Account = {
   readonly id: string;
   readonly currency: CurrencyCode;
-  /** "US Dollar account" */
+  /** "US Dollar account" — used where the row stands alone. */
   readonly name: string;
+  /** "US Dollar" — used inside a list that is already about accounts. */
+  readonly shortName: string;
   /** "Salary account", "Local account" */
   readonly kind: AccountKind;
   readonly balance: Money;
@@ -27,7 +29,9 @@ export type AccountKind = 'salary' | 'local' | 'benefit' | 'multi-currency' | 'v
 export type AccountDetails = {
   readonly accountId: string;
   readonly holderName: string;
+  /** Always a TPay-facing name — never the underlying institution. */
   readonly bankName: string;
+  readonly bankAddress: string;
   readonly fields: readonly AccountDetailField[];
 };
 

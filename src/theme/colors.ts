@@ -16,6 +16,8 @@ export const colors = {
   primaryOnDark: '#9DC6BB',
   primaryOnDarkMuted: '#7FAFA3',
   primaryOnDarkSubtle: '#4E7A70',
+  /** Body copy on the primary-soft tint. */
+  primaryDeepText: '#28564C',
 
   /** Near-black used for text and the card surface. */
   ink: '#101A16',

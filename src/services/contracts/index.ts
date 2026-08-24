@@ -2,7 +2,13 @@ export type { AccountService } from './accountService';
 export type { BenefitsService } from './benefitsService';
 export type { CardService } from './cardService';
 export type { EmploymentService } from './employmentService';
-export type { FxQuote, FxService } from './fxService';
+export type {
+  ExchangeQuote,
+  ExchangeQuoteRequest,
+  ExchangeResult,
+  FxQuote,
+  FxService,
+} from './fxService';
 export type {
   KycCallbackPayload,
   KycService,

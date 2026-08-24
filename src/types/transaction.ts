@@ -1,4 +1,4 @@
-import type { Money } from './money';
+import type { CurrencyCode, Money } from './money';
 
 /** Every movement of money in TPay is one of these. */
 export type TransactionType = 'salary' | 'transfer' | 'card' | 'deposit' | 'fx' | 'fee';
@@ -22,4 +22,21 @@ export type Transaction = {
   /** Account the movement settled against. */
   readonly accountId?: string;
   readonly reference?: string;
+  /** Counterparty institution, shown on the detail screen when known. */
+  readonly counterpartyBank?: string;
+  /** Charged on top of `amount`. */
+  readonly fee?: Money;
+  /** Rate applied when the movement crossed currencies. */
+  readonly fxRate?: FxRate;
+  /** What the other side received, for transfers and exchanges. */
+  readonly counterAmount?: Money;
+  /** Explains a `failed` status to the user. */
+  readonly failureReason?: string;
+};
+
+/** A rate as it is quoted to the user: "1 USD = 3.7500 SAR". */
+export type FxRate = {
+  readonly from: CurrencyCode;
+  readonly to: CurrencyCode;
+  readonly rate: number;
 };

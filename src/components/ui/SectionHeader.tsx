@@ -9,15 +9,26 @@ export type SectionHeaderProps = {
   /** Trailing link — "View all", "See all", "Manage". */
   actionLabel?: string;
   onActionPress?: () => void;
+  actionTestID?: string;
 };
 
 /** Section title with an optional trailing link, as used all over Home. */
-export function SectionHeader({ title, actionLabel, onActionPress }: SectionHeaderProps) {
+export function SectionHeader({
+  title,
+  actionLabel,
+  onActionPress,
+  actionTestID,
+}: SectionHeaderProps) {
   return (
     <View style={styles.row}>
       <Text variant="sectionTitle">{title}</Text>
       {actionLabel && onActionPress ? (
-        <Tappable accessibilityRole="link" onPress={onActionPress} style={styles.action}>
+        <Tappable
+          accessibilityRole="link"
+          testID={actionTestID}
+          onPress={onActionPress}
+          style={styles.action}
+        >
           <Text variant="action" color={colors.primary}>
             {actionLabel}
           </Text>

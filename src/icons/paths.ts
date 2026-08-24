@@ -20,6 +20,13 @@ export type IconShape =
 export const iconPaths = {
   'arrow-left': [{ kind: 'path', d: 'm12 19-7-7 7-7' }, { kind: 'path', d: 'M19 12H5' }],
   'arrow-up-right': [{ kind: 'path', d: 'M7 7h10v10' }, { kind: 'path', d: 'M7 17 17 7' }],
+  /** Vertical swap, for reversing the two sides of an exchange. */
+  'arrow-down-up': [
+    { kind: 'path', d: 'm3 16 4 4 4-4' },
+    { kind: 'path', d: 'M7 20V4' },
+    { kind: 'path', d: 'm21 8-4-4-4 4' },
+    { kind: 'path', d: 'M17 4v16' },
+  ],
   'alert-triangle': [
     { kind: 'path', d: 'm21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3' },
     { kind: 'path', d: 'M12 9v4' },

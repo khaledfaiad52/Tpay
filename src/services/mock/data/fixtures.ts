@@ -37,6 +37,7 @@ export const mockAccounts: readonly Account[] = [
     id: 'acc_usd',
     currency: 'USD',
     name: 'US Dollar account',
+    shortName: 'US Dollar',
     kind: 'salary',
     balance: fromMajor(8250, 'USD'),
     maskedNumber: '4821',
@@ -46,6 +47,7 @@ export const mockAccounts: readonly Account[] = [
     id: 'acc_sar',
     currency: 'SAR',
     name: 'Saudi Riyal account',
+    shortName: 'Saudi Riyal',
     kind: 'local',
     balance: fromMajor(15200, 'SAR'),
     maskedNumber: '1093',
@@ -55,6 +57,7 @@ export const mockAccounts: readonly Account[] = [
     id: 'acc_aed',
     currency: 'AED',
     name: 'UAE Dirham account',
+    shortName: 'UAE Dirham',
     kind: 'benefit',
     balance: fromMajor(4500, 'AED'),
     maskedNumber: '7734',
@@ -64,6 +67,7 @@ export const mockAccounts: readonly Account[] = [
     id: 'acc_egp',
     currency: 'EGP',
     name: 'Egyptian Pound account',
+    shortName: 'Egyptian Pound',
     kind: 'local',
     balance: fromMajor(75000, 'EGP'),
     maskedNumber: '2260',
@@ -73,6 +77,7 @@ export const mockAccounts: readonly Account[] = [
     id: 'acc_eur',
     currency: 'EUR',
     name: 'Euro account',
+    shortName: 'Euro',
     kind: 'multi-currency',
     balance: fromMajor(1250, 'EUR'),
     maskedNumber: '5518',
@@ -83,17 +88,71 @@ export const mockAccounts: readonly Account[] = [
 /** USD-equivalent of every account combined — the "one balance" figure. */
 export const mockTotalBalance = fromMajor(12450, 'USD');
 
+/**
+ * Shareable receiving coordinates, one set per currency account.
+ * Every value is masked or clearly marked DEMO — these are not real bank
+ * coordinates and must never be replaced with real ones in this repository.
+ */
 export const mockAccountDetails: Record<string, AccountDetails> = {
   acc_usd: {
     accountId: 'acc_usd',
     holderName: 'Khaled Faiad',
-    bankName: 'TPay Account',
+    bankName: 'TPay Account · partner bank',
+    bankAddress: 'Dubai, United Arab Emirates',
     fields: [
+      { label: 'Account holder', value: 'Khaled Faiad' },
+      { label: 'IBAN', value: 'DEMO AE07 0331 2345 6789 0123 456', monospaced: true },
       { label: 'Account number', value: 'DEMO •••• 4821', monospaced: true },
-      { label: 'Routing number (ACH)', value: 'DEMO •••• 0142', monospaced: true },
-      { label: 'SWIFT / BIC', value: 'DEMOUS33', monospaced: true },
-      { label: 'Account type', value: 'Checking' },
-      { label: 'Bank address', value: '1 Demo Plaza, New York, NY 10004' },
+      { label: 'SWIFT / BIC', value: 'DEMOAEAD', monospaced: true },
+      { label: 'Routing number (ACH)', value: 'DEMO •••• 3150', monospaced: true },
+    ],
+  },
+  acc_sar: {
+    accountId: 'acc_sar',
+    holderName: 'Khaled Faiad',
+    bankName: 'TPay Account · partner bank',
+    bankAddress: 'Riyadh, Saudi Arabia',
+    fields: [
+      { label: 'Account holder', value: 'Khaled Faiad' },
+      { label: 'IBAN', value: 'DEMO SA03 8000 0000 6080 1093 4210', monospaced: true },
+      { label: 'Account number', value: 'DEMO •••• 1093', monospaced: true },
+      { label: 'SWIFT / BIC', value: 'DEMOSARI', monospaced: true },
+    ],
+  },
+  acc_aed: {
+    accountId: 'acc_aed',
+    holderName: 'Khaled Faiad',
+    bankName: 'TPay Account · partner bank',
+    bankAddress: 'Dubai, United Arab Emirates',
+    fields: [
+      { label: 'Account holder', value: 'Khaled Faiad' },
+      { label: 'IBAN', value: 'DEMO AE45 0331 9988 7734 0011 220', monospaced: true },
+      { label: 'Account number', value: 'DEMO •••• 7734', monospaced: true },
+      { label: 'SWIFT / BIC', value: 'DEMOAEAD', monospaced: true },
+    ],
+  },
+  acc_egp: {
+    accountId: 'acc_egp',
+    holderName: 'Khaled Faiad',
+    bankName: 'TPay Account · partner bank',
+    bankAddress: 'Cairo, Egypt',
+    fields: [
+      { label: 'Account holder', value: 'Khaled Faiad' },
+      { label: 'IBAN', value: 'DEMO EG38 0019 0005 0000 0002 2600 1', monospaced: true },
+      { label: 'Account number', value: 'DEMO •••• 2260', monospaced: true },
+      { label: 'SWIFT / BIC', value: 'DEMOEGCX', monospaced: true },
+    ],
+  },
+  acc_eur: {
+    accountId: 'acc_eur',
+    holderName: 'Khaled Faiad',
+    bankName: 'TPay Account · partner bank',
+    bankAddress: 'Dublin, Ireland',
+    fields: [
+      { label: 'Account holder', value: 'Khaled Faiad' },
+      { label: 'IBAN', value: 'DEMO IE29 AIBK 9311 5212 3455 18', monospaced: true },
+      { label: 'Account number', value: 'DEMO •••• 5518', monospaced: true },
+      { label: 'SWIFT / BIC', value: 'DEMOIE2D', monospaced: true },
     ],
   },
 };
@@ -111,6 +170,7 @@ export const mockTransactions: readonly Transaction[] = [
     status: 'completed',
     accountId: 'acc_usd',
     reference: 'TPY-SAL-4471',
+    counterpartyBank: 'Acme Technologies payroll',
   },
   {
     id: 'txn_1002',
@@ -121,7 +181,11 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-08-18T14:22:00.000Z',
     status: 'completed',
     accountId: 'acc_usd',
-    reference: 'TPY-TRF-9012',
+    reference: 'TPY-8842-KF19',
+    counterpartyBank: 'Emirates NBD',
+    fee: fromMajor(2.5, 'USD'),
+    fxRate: { from: 'USD', to: 'AED', rate: 3.6725 },
+    counterAmount: fromMajor(3121.63, 'AED'),
   },
   {
     id: 'txn_1003',
@@ -143,6 +207,9 @@ export const mockTransactions: readonly Transaction[] = [
     status: 'completed',
     accountId: 'acc_usd',
     reference: 'TPY-FX-3388',
+    fee: fromMajor(2.5, 'USD'),
+    fxRate: { from: 'USD', to: 'SAR', rate: 3.7475 },
+    counterAmount: fromMajor(3738.13, 'SAR'),
   },
   {
     id: 'txn_1005',
@@ -153,6 +220,19 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-08-13T08:12:00.000Z',
     status: 'pending',
     accountId: 'acc_usd',
+  },
+  {
+    id: 'txn_1008',
+    type: 'transfer',
+    direction: 'debit',
+    description: 'Sara Mahmoud',
+    amount: fromMajor(300, 'USD'),
+    occurredAt: '2026-08-11T09:47:00.000Z',
+    status: 'failed',
+    accountId: 'acc_usd',
+    reference: 'TPY-TRF-7710',
+    counterpartyBank: 'Banque Misr',
+    failureReason: 'The recipient bank rejected the transfer. No money left your account.',
   },
   {
     id: 'txn_1006',
@@ -173,6 +253,29 @@ export const mockTransactions: readonly Transaction[] = [
     occurredAt: '2026-07-22T10:02:00.000Z',
     status: 'completed',
     accountId: 'acc_usd',
+    reference: 'TPY-FEE-1180',
+  },
+  {
+    id: 'txn_2001',
+    type: 'fx',
+    direction: 'credit',
+    description: 'USD → SAR exchange',
+    amount: fromMajor(3738.13, 'SAR'),
+    occurredAt: '2026-08-14T11:40:00.000Z',
+    status: 'completed',
+    accountId: 'acc_sar',
+    reference: 'TPY-FX-3388',
+    fxRate: { from: 'USD', to: 'SAR', rate: 3.7475 },
+  },
+  {
+    id: 'txn_2002',
+    type: 'card',
+    direction: 'debit',
+    description: 'Jarir Bookstore',
+    amount: fromMajor(410, 'SAR'),
+    occurredAt: '2026-08-12T17:20:00.000Z',
+    status: 'completed',
+    accountId: 'acc_sar',
   },
 ];
 

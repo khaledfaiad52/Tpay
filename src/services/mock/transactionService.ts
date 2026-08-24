@@ -1,22 +1,41 @@
-import type { TransactionService } from '@/services/contracts';
-import { mockTransactions } from './data/fixtures';
+import type { TransactionQuery, TransactionService } from '@/services/contracts';
+import type { Transaction } from '@/types';
+import { getTransactions } from './data/store';
 import { NotFoundError, respond } from './latency';
+
+/** Applies a query to a list. Exported so it can be unit tested directly. */
+export function filterTransactions(
+  source: readonly Transaction[],
+  query: TransactionQuery = {},
+): readonly Transaction[] {
+  const { accountId, types, direction, search } = query;
+  const needle = search?.trim().toLowerCase();
+
+  return source
+    .filter((item) => (accountId ? item.accountId === accountId : true))
+    .filter((item) => (types?.length ? types.includes(item.type) : true))
+    .filter((item) => (direction ? item.direction === direction : true))
+    .filter((item) =>
+      needle
+        ? item.description.toLowerCase().includes(needle) ||
+          (item.reference?.toLowerCase().includes(needle) ?? false)
+        : true,
+    )
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+}
 
 export const mockTransactionService: TransactionService = {
   listTransactions: (query = {}) => {
-    const { limit, accountId, types } = query;
-    let items = [...mockTransactions].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
-    if (accountId) items = items.filter((item) => item.accountId === accountId);
-    if (types?.length) items = items.filter((item) => types.includes(item.type));
-    const page = limit ? items.slice(0, limit) : items;
+    const matches = filterTransactions(getTransactions(), query);
+    const page = query.limit ? matches.slice(0, query.limit) : matches;
     return respond('transactionService.listTransactions', {
       items: page,
-      nextCursor: page.length < items.length ? String(page.length) : undefined,
+      nextCursor: page.length < matches.length ? String(page.length) : undefined,
     });
   },
 
   getTransaction: (transactionId) => {
-    const transaction = mockTransactions.find((candidate) => candidate.id === transactionId);
+    const transaction = getTransactions().find((candidate) => candidate.id === transactionId);
     if (!transaction) return Promise.reject(new NotFoundError('Transaction', transactionId));
     return respond('transactionService.getTransaction', transaction);
   },

@@ -26,6 +26,7 @@ export type {
   UpcomingSalary,
 } from './salary';
 export type {
+  FxRate,
   Transaction,
   TransactionDirection,
   TransactionStatus,

@@ -8,13 +8,23 @@ import { Text } from './Text';
 export type AmountTextProps = {
   value: Money;
   /** Type ramp entry for the whole part. */
-  variant?: 'balance' | 'balanceSm' | 'amountLg' | 'amountMd' | 'amountSm';
+  variant?:
+    | 'balance'
+    | 'balanceSm'
+    | 'balanceMd'
+    | 'amountHero'
+    | 'amountXl'
+    | 'amountLg'
+    | 'amountMd'
+    | 'amountSm';
   color?: string;
   /** Renders the cents smaller and in `fractionColor`, as the balance card does. */
   emphasiseWhole?: boolean;
   fractionColor?: string;
   /** Prefixes "+" or "−" for transaction rows. */
   direction?: TransactionDirection;
+  /** Struck through — a failed movement that never left the account. */
+  strikethrough?: boolean;
 };
 
 /**
@@ -28,13 +38,19 @@ export function AmountText({
   emphasiseWhole = false,
   fractionColor = colors.primaryOnDark,
   direction,
+  strikethrough = false,
 }: AmountTextProps) {
   const parts = formatMoneyParts(value);
   const sign = direction ? (direction === 'credit' ? '+' : MINUS) : '';
   const fractionSize = Math.round(type[variant].fontSize * 0.6);
 
   return (
-    <Text variant={variant} color={color} numeric>
+    <Text
+      variant={variant}
+      color={color}
+      numeric
+      style={strikethrough ? styles.struck : undefined}
+    >
       {sign}
       {parts.prefix}
       {parts.whole}
@@ -54,4 +70,5 @@ export function AmountText({
 
 const styles = StyleSheet.create({
   fraction: { letterSpacing: 0 },
+  struck: { textDecorationLine: 'line-through' },
 });

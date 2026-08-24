@@ -41,10 +41,16 @@ export const type = {
   balance: { fontFamily: fonts.extrabold, fontSize: 40, letterSpacing: -1.6, lineHeight: 44 },
   /** 34/800 — balance on secondary screens. */
   balanceSm: { fontFamily: fonts.extrabold, fontSize: 34, letterSpacing: -1.36, lineHeight: 38 },
+  /** 28/800 — a single account's balance. */
+  balanceMd: { fontFamily: fonts.extrabold, fontSize: 28, letterSpacing: -0.84, lineHeight: 30 },
   /** 24/800 — screen titles. */
   screenTitle: { fontFamily: fonts.extrabold, fontSize: 24, letterSpacing: -0.72 },
   /** 22/800 — the user's name in the Home greeting. */
   displaySm: { fontFamily: fonts.extrabold, fontSize: 22, letterSpacing: -0.66 },
+  /** 24/800 — the two sides of an exchange. */
+  amountXl: { fontFamily: fonts.extrabold, fontSize: 24, letterSpacing: -0.72 },
+  /** 32/800 — the figure on a transaction receipt. */
+  amountHero: { fontFamily: fonts.extrabold, fontSize: 32, letterSpacing: -1.28 },
   /** 19/800 — figure inside a list card. */
   amountLg: { fontFamily: fonts.extrabold, fontSize: 19, letterSpacing: -0.38 },
   /** 16/800 — inline screen headings. */
@@ -75,6 +81,8 @@ export const type = {
   tabIdle: { fontFamily: fonts.semibold, fontSize: 10 },
   /** 12/700 · 0.08em — the eyebrow above the balance. */
   eyebrow: { fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.96 },
+  /** 11/700 · 0.055em — small-caps group headings and field labels. */
+  eyebrowSm: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.62 },
   /** Monospaced account identifiers. */
   mono: { fontFamily: fonts.mono, fontSize: 13, letterSpacing: 0.2 },
 } satisfies Record<string, Variant>;

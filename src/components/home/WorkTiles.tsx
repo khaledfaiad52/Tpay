@@ -28,7 +28,7 @@ export function WorkTiles({
 }: WorkTilesProps) {
   return (
     <View style={styles.grid}>
-      <Card onPress={onBenefitsPress} style={styles.tile}>
+      <Card onPress={onBenefitsPress} style={styles.tile} testID="home-benefits">
         <IconTile name="gift" tone="primary" size={34} />
         <Text variant="label">Benefits</Text>
         <Text variant="captionSm" color={colors.inkMuted}>
@@ -36,7 +36,7 @@ export function WorkTiles({
         </Text>
       </Card>
 
-      <Card onPress={onEmployerPress} style={styles.tile}>
+      <Card onPress={onEmployerPress} style={styles.tile} testID="home-employer">
         <IconTile name="building" tone="gold" size={34} />
         <Text variant="label">{employment?.employer.name ?? 'No employer linked'}</Text>
         <Text variant="captionSm" color={colors.inkMuted}>

@@ -17,14 +17,14 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1 | Foundation, design system, navigation, Home, mock data architecture | **Done** |
-| 2 | Wallet, accounts, account details, add money, exchange, transactions | Not started |
+| 2 | Wallet, accounts, account details, add money, exchange, transactions | **Done** |
 | 3 | Send Money — recipient → amount → review → confirmation → success | Not started |
 | 4 | Salary, employer, benefits, documents, requests | Not started |
 | 5 | Card, profile, KYC, security | Not started |
 | 6 | Polish, testing, error/loading/empty states across the app | Not started |
 
-Every screen outside Phase 1 exists as a routed placeholder, so navigation and
-back navigation work end to end today.
+Every screen outside Phases 1–2 exists as a routed placeholder, so navigation
+and back navigation work end to end today.
 
 ---
 
@@ -41,10 +41,35 @@ npm start          # Expo dev server — press i / a, or scan the QR code
 | `npm run android` | Open in an Android emulator |
 | `npm run web` | Run in a browser |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint, including the React Compiler rules |
+| `npm test` | Unit tests (`node --test`, no test framework dependency) |
+| `npm run test:e2e` | End-to-end flows against a web build (see below) |
 | `npm run export:web` | Static web build into `dist/` |
 
-Requires Node 20+. The app targets iOS and Android; the web target is used for
-review and automated checks.
+Requires Node 22+ (the unit tests run TypeScript directly via type stripping).
+The app targets iOS and Android; the web target is used for review and
+automated checks.
+
+### Tests
+
+```bash
+npm test                                   # unit tests
+
+npm run export:web                         # then, in a second shell:
+npx http-server dist -p 4173
+npm run test:e2e
+```
+
+Unit tests live beside the code they cover (`*.test.ts`) and run on Node's
+built-in runner — `test/alias-loader.mjs` teaches Node the `@/…` alias so tests
+import exactly the way the app does. The end-to-end flows in `e2e/flows.mjs`
+drive a real browser through the app and assert on what is visible; they cover
+Home → Wallet → Account → Account details → Add money → Exchange →
+Transactions → Transaction detail, and back navigation at each step.
+
+Note that a plain static file server cannot resolve dynamic routes
+(`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
+`/` and navigate, as the tests do.
 
 ### Environment
 
@@ -68,8 +93,9 @@ src/
   icons/            24×24 stroked icon set (no emoji, no icon fonts)
   components/
     ui/             Screen, Card, ListRow, Badge, Button, Text, states…
-    money/          transaction and account presentation
+    money/          transaction and account presentation, receipts, filters
     home/           the Home screen's sections
+    wallet/         wallet, deposit and exchange sections
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
@@ -107,6 +133,12 @@ Mock data lives in `src/services/mock/data/fixtures.ts` and is reachable only
 through a service. Components receive typed domain objects. Demo data is
 fictional and masked (`DEMO •••• 4821`) — no real account numbers.
 
+`src/services/mock/data/store.ts` holds the session's mutable state, seeded
+from those fixtures. It is what makes the app behave like a real one: booking
+an exchange debits one account, credits another and records both sides, so the
+Wallet and Transactions screens show the result. A real backend replaces the
+store wholesale.
+
 ### Money
 
 Money is always `{ minorUnits, currency }` — never a float, never a
@@ -117,6 +149,10 @@ reaches the screen through `<AmountText />`.
 
 The TPay Wallet and the TPay Card share a single balance. `Card` carries no
 balance field, by design.
+
+The USD-equivalent total is treated as provider-reported rather than summed
+client-side, and moves only by what an operation actually costs — an exchange
+is value-neutral apart from its spread.
 
 ---
 
