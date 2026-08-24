@@ -10,6 +10,7 @@ import type {
   RequestsService,
   SalaryService,
   SecurityService,
+  SessionService,
   SupportService,
   TransactionService,
   TransferService,
@@ -44,7 +45,16 @@ export type ServiceRegistry = {
   readonly security: SecurityService;
   readonly support: SupportService;
   readonly notifications: NotificationsService;
+  readonly session: SessionService;
 };
+
+/**
+ * Device biometrics are deliberately not in this registry. They are answered
+ * by the platform rather than by a provider, so there is one implementation
+ * for every adapter set — `deviceBiometricAuthenticator` in
+ * `src/services/device`. Screens import it directly; nothing prompts for a
+ * face on its own.
+ */
 
 /** Adapters shipped today. Provider-backed sets get their own key here. */
 export type ProviderId = 'mock';
@@ -67,6 +77,7 @@ const REGISTRIES: Record<ProviderId, ServiceRegistry> = {
     security: mock.mockSecurityService,
     support: mock.mockSupportService,
     notifications: mock.mockNotificationsService,
+    session: mock.mockSessionService,
   },
 };
 

@@ -15,9 +15,11 @@ import {
   Text,
   useToast,
 } from '@/components/ui';
+import { SessionDemoControls, useSession } from '@/components/auth';
 import { useRefreshOnFocus, useSecurityData } from '@/hooks';
 import { Icon } from '@/icons';
 import { services } from '@/services';
+import { deviceBiometricAuthenticator } from '@/services/device';
 import { colors, radius, spacing } from '@/theme';
 import type { LoginEvent, LoginOutcome } from '@/types';
 import { formatLongDate, formatRelativeDateTime } from '@/utils';
@@ -31,6 +33,7 @@ const OUTCOME_DOTS: Record<LoginOutcome, string> = {
 /** Everything protecting the account, and every session that can reach it. */
 export default function SecurityScreen() {
   const data = useSecurityData();
+  const session = useSession();
   const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
   useRefreshOnFocus(data.reload);
@@ -68,9 +71,27 @@ export default function SecurityScreen() {
       return;
     }
     setBusy(true);
-    await services.security.setBiometricsEnabled(next);
-    data.reload();
-    setBusy(false);
+    try {
+      if (next) {
+        // Turning it on runs the real check once, so the switch can only be
+        // set by someone who has actually passed it.
+        await deviceBiometricAuthenticator.authenticate(`Use ${biometrics.label} with TPay`);
+      }
+      await services.security.setBiometricsEnabled(next);
+      // The same preference gates unlocking the app on the next launch.
+      await services.session.setBiometricUnlockEnabled(next);
+      await session.refresh();
+      data.reload();
+      showToast(
+        next
+          ? `${biometrics.label} is on for logging in and approving transfers`
+          : `${biometrics.label} is off`,
+      );
+    } catch (cause) {
+      showToast(cause instanceof Error ? cause.message : 'That check did not complete.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleTwoFactor = async (next: boolean) => {
@@ -184,6 +205,8 @@ export default function SecurityScreen() {
         </View>
         <Icon name="chevron-right" size={18} color={colors.danger} />
       </Tappable>
+
+      <SessionDemoControls />
     </Screen>
   );
 }

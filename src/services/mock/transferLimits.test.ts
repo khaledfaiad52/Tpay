@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { TransferLimitExceededError } from '@/services/contracts';
+import { AccountRestrictedError, TransferLimitExceededError } from '@/services/contracts';
 import { fromMajor, type KycStatus } from '@/types';
 import { resetKyc, setKycStatus } from './kycService';
 import { configureMockBehaviour } from './latency';
@@ -83,14 +83,16 @@ describe('KYC status drives the transfer limit', () => {
     assert.ok(await quoteUsd(900));
   });
 
+  // A blocked verification stops money through the one account-state gate,
+  // before an amount is ever priced — the same gate a freeze goes through.
   it('blocks every amount while the account is suspended', async () => {
     setKycStatus('SUSPENDED');
-    await assert.rejects(() => quoteUsd(1), TransferLimitExceededError);
+    await assert.rejects(() => quoteUsd(1), AccountRestrictedError);
   });
 
   it('blocks every amount after a rejection', async () => {
     setKycStatus('REJECTED');
-    await assert.rejects(() => quoteUsd(1), TransferLimitExceededError);
+    await assert.rejects(() => quoteUsd(1), AccountRestrictedError);
   });
 
   it('carries the limit on the error so the screen can explain it', async () => {
@@ -112,11 +114,30 @@ describe('KYC status drives the transfer limit', () => {
     await assert.rejects(
       () => quoteUsd(10),
       (error: unknown) => {
-        assert.ok(error instanceof TransferLimitExceededError);
+        assert.ok(error instanceof AccountRestrictedError);
         assert.match(error.message, /paused/);
+        assert.equal(error.restriction.code, 'account-under-review');
+        assert.equal(error.restriction.action.kind, 'contact-support');
         return true;
       },
     );
+  });
+
+  it('names a declined verification as the cause, not a freeze', async () => {
+    setKycStatus('REJECTED');
+    await assert.rejects(
+      () => quoteUsd(10),
+      (error: unknown) => {
+        assert.ok(error instanceof AccountRestrictedError);
+        assert.equal(error.restriction.code, 'verification-declined');
+        return true;
+      },
+    );
+  });
+
+  it('still publishes the blocked ceiling, so a screen can state it', () => {
+    assert.equal(sendingLimitFor('SUSPENDED').max.minorUnits, 0);
+    assert.equal(sendingLimitFor('REJECTED').max.minorUnits, 0);
   });
 
   it('reports the current ceiling through the service', async () => {

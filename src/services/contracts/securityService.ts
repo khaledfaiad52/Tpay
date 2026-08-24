@@ -73,18 +73,33 @@ export type BiometricAuthenticator = {
  * fills this from whatever its own risk system reports.
  */
 export type AccountState = {
+  /** True when the user froze the account themselves. */
   readonly frozen: boolean;
+  /** True when nothing may move, for any reason. */
+  readonly restricted: boolean;
   /** Present exactly when something is blocked, and says what to do about it. */
   readonly restriction?: AccountRestriction;
 };
 
 export type AccountRestriction = {
   /** Machine-readable cause, for screens that branch on it. */
-  readonly code: 'account-frozen';
+  readonly code: AccountRestrictionCode;
   readonly title: string;
   readonly explanation: string;
   readonly action: AccountRestrictionAction;
 };
+
+/**
+ * Why money cannot move.
+ *
+ * A frozen account is the user's own doing and they can undo it; a declined or
+ * suspended verification is TPay's, and only support can move it on. Both stop
+ * money the same way, which is why they share one state.
+ */
+export type AccountRestrictionCode =
+  | 'account-frozen'
+  | 'verification-declined'
+  | 'account-under-review';
 
 export type AccountRestrictionAction =
   | { readonly kind: 'unfreeze-account'; readonly label: string }

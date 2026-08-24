@@ -27,6 +27,8 @@ export type DemoControls = {
   readonly kyc: boolean;
   /** Authorise a card purchase from the card screen. */
   readonly card: boolean;
+  /** Expire the session from the Security screen. */
+  readonly session: boolean;
 };
 
 /** Only the exact string "true" enables a demo control. */
@@ -47,5 +49,6 @@ export const appConfig: AppConfig = {
   demo: {
     kyc: readFlag(process.env.EXPO_PUBLIC_ENABLE_KYC_DEMO),
     card: readFlag(process.env.EXPO_PUBLIC_ENABLE_CARD_DEMO),
+    session: readFlag(process.env.EXPO_PUBLIC_ENABLE_SESSION_DEMO),
   },
 };

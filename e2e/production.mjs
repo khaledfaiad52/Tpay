@@ -61,9 +61,28 @@ const present = async (name, testId) => {
   }
 };
 
+/** Signs in the way a person would, since the app now starts signed out. */
+const signIn = async () => {
+  const welcome = byTestId('welcome-login');
+  if (await welcome.count()) {
+    await welcome.click();
+    await page.waitForTimeout(STEP_MS);
+  }
+  await byTestId('login-identifier').fill('khaled.faiad@demo.acme.sa');
+  await byTestId('login-password').fill('demo-password');
+  await byTestId('login-submit').click();
+  await page.waitForTimeout(BOOT_MS);
+};
+
 try {
   await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(BOOT_MS);
+
+  // The guard is not a demo affordance: it must hold in production too.
+  record('A production build starts signed out', page.url().includes('/welcome'));
+  await signIn();
+  await present('Signing in reaches the authenticated app', 'tab-index');
+  await absent('No session demo control ships', 'session-demo-expire');
 
   // The verification screen still works; only its demo row is gone.
   await tapId('tab-profile');
@@ -76,6 +95,7 @@ try {
   // The card screen still works; only its demo terminal is gone.
   await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(BOOT_MS);
+  await signIn();
   await tapText('Manage');
   await tapId('card-face-card_primary');
   await present('The card screen still renders', 'card-face');

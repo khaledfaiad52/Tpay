@@ -18,6 +18,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AuthGuard, SessionProvider } from '@/components/auth';
 import { SendFlowProvider } from '@/components/send';
 import { ToastProvider } from '@/components/ui';
 import { colors } from '@/theme';
@@ -55,14 +56,18 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <ToastProvider>
-          <SendFlowProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.canvas },
-              }}
-            />
-          </SendFlowProvider>
+          <SessionProvider>
+            <SendFlowProvider>
+              <AuthGuard>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: colors.canvas },
+                  }}
+                />
+              </AuthGuard>
+            </SendFlowProvider>
+          </SessionProvider>
         </ToastProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

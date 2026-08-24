@@ -103,9 +103,31 @@ export async function runFlows(page, log) {
     else await page.goBack();
     await page.waitForTimeout(STEP_MS);
   };
+  /**
+   * Signs in when the app has landed on a signed-out screen.
+   *
+   * Reloading resets the mock store, and with it the session, so every reload
+   * comes back to Welcome. The flows below are about the authenticated app,
+   * so getting past the front door is part of arriving.
+   */
+  const signInIfNeeded = async () => {
+    const welcome = byTestId('welcome-login');
+    if (await welcome.count()) {
+      await welcome.click();
+      await page.waitForTimeout(STEP_MS);
+    }
+    const identifier = byTestId('login-identifier');
+    if (!(await identifier.count())) return;
+    await identifier.fill('khaled.faiad@demo.acme.sa');
+    await byTestId('login-password').fill('demo-password');
+    await byTestId('login-submit').click();
+    await page.waitForTimeout(BOOT_MS);
+  };
+
   const goHome = async () => {
     await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(BOOT_MS);
+    await signInIfNeeded();
   };
 
   await goHome();
@@ -283,6 +305,22 @@ export async function runFlows(page, log) {
     tapId,
     back,
     goHome,
+    byTestId,
+    page,
+  });
+
+  // Last, because these flows sign out and create accounts: everything above
+  // needs the demo user signed in.
+  await runAuthFlows({
+    check,
+    checkId,
+    checkMissing,
+    checkUrl,
+    tapText,
+    tapId,
+    back,
+    goHome,
+    signInIfNeeded,
     byTestId,
     page,
   });
@@ -651,7 +689,10 @@ async function runAccountFlows({
   await tapId('profile-security');
   await check('Profile → Security', 'Your account is protected');
   await check('Security offers device biometrics', 'Face ID');
-  await check('Security is honest that biometrics are unavailable', 'not connected yet');
+  await check(
+    'Security is honest that biometrics are unavailable here',
+    'available in the TPay app on your phone',
+  );
   await check('Security offers two-factor', 'Two-factor authentication');
   await check('Two-factor names a masked destination', 'SMS to +966');
   await check('Security lists recent logins', 'RECENT LOGIN ACTIVITY');
@@ -660,7 +701,10 @@ async function runAccountFlows({
 
   await tapId('security-biometrics');
   await page.waitForTimeout(1200);
-  await check('Turning on unavailable biometrics explains itself', 'not connected yet');
+  await check(
+    'Turning on unavailable biometrics explains itself',
+    'available in the TPay app on your phone',
+  );
 
   await tapId('security-two-factor');
   await page.waitForTimeout(1400);
@@ -816,8 +860,8 @@ async function runAccountFlows({
   await tapId('recent-recipient-rcp_ahmed');
   await byTestId('send-amount').fill('10');
   await page.waitForTimeout(1800);
-  await checkId('A suspended account is stopped at the amount', 'send-limit');
-  await check('The stop explains itself', 'Sending is paused while TPay reviews your account');
+  await checkId('A suspended account is stopped at the amount', 'send-restriction');
+  await check('The stop explains itself', 'paused while TPay reviews your account');
   await check('It offers the only thing that helps', 'Contact TPay support');
   await checkMissing('Review is unreachable while blocked', 'Review transfer is enabled');
 
@@ -1084,4 +1128,267 @@ async function runCardFlows({
   await home();
   await tapId('tab-send');
   await checkMissing('Send works again once unfrozen', 'Your account is frozen');
+}
+
+/**
+ * Phase 6 — Authentication and onboarding.
+ *
+ * Runs last, because it signs out and creates accounts. The root guard is what
+ * is really under test: no screen carries a signed-out branch, so the only way
+ * to prove an authenticated route is protected is to ask for it without a
+ * session and see where the app puts you.
+ */
+async function runAuthFlows({
+  check,
+  checkId,
+  checkMissing,
+  checkUrl,
+  tapText,
+  tapId,
+  back,
+  goHome,
+  signInIfNeeded,
+  byTestId,
+  page,
+}) {
+  const OTP = '419204';
+  const EMAIL = 'khaled.faiad@demo.acme.sa';
+  const PASSWORD = 'demo-password';
+
+  /** Reloads to a signed-out app, without signing back in. */
+  const signedOut = async (path = '/') => {
+    await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+  };
+  const fillOtp = async (code) => {
+    await byTestId('verify-code').fill(code);
+    await page.waitForTimeout(400);
+  };
+
+  // ---- A signed-out app starts at Welcome ---------------------------------
+  await signedOut();
+  await checkUrl('A signed-out app opens on Welcome', '/welcome');
+  await check('Welcome names the product', 'Everything you earn, in one place');
+  await check('Welcome explains the salary promise', 'Your salary, on time');
+  await check('Welcome offers a way in', 'I already have an account');
+
+  // ---- Authenticated routes are unreachable without a session -------------
+  for (const [name, path] of [
+    ['Home', '/'],
+    ['the wallet', '/wallet'],
+    ['a card', '/cards'],
+    ['security', '/security'],
+    ['transactions', '/transactions'],
+  ]) {
+    await signedOut(path);
+    await checkUrl(`A signed-out user cannot reach ${name}`, '/welcome');
+  }
+  await checkMissing('No authenticated content leaks through', 'TPAY BALANCE');
+
+  // ---- Login --------------------------------------------------------------
+  await tapId('welcome-login');
+  await check('Welcome → Login', 'Welcome back');
+  await check('Login offers a password reset', 'Forgot password?');
+  await check('Login offers signup', 'Create an account');
+  await check('Login is honest that biometrics need the app', 'Biometric unlock is available in the TPay app');
+
+  await byTestId('login-identifier').fill(EMAIL);
+  await byTestId('login-password').fill('wrong-password');
+  await tapId('login-submit');
+  await page.waitForTimeout(1200);
+  await check('Wrong credentials are refused', "isn't right");
+  await checkUrl('A refused login stays on the login screen', '/login');
+
+  await tapId('login-toggle-password');
+  await check('The password can be shown', 'Hide');
+
+  await byTestId('login-password').fill(PASSWORD);
+  await tapId('login-submit');
+  await page.waitForTimeout(2500);
+  await check('The right credentials reach Home', 'TPAY BALANCE');
+  await checkUrl('Login lands on Home, not the login screen', '/');
+
+  // ---- An authenticated user never sees login -----------------------------
+  await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(2500);
+  await signInIfNeeded();
+  await check('Home survives a reload', 'TPAY BALANCE');
+
+  // ---- Logout is a real session transition --------------------------------
+  await tapId('tab-profile');
+  await tapId('profile-log-out');
+  await page.waitForTimeout(2200);
+  await checkUrl('Logging out reaches the login screen', '/welcome');
+  await checkMissing('Logging out leaves the authenticated app', 'Security centre');
+
+  await tapId('welcome-login');
+  await byTestId('login-identifier').fill(EMAIL);
+  await byTestId('login-password').fill(PASSWORD);
+  await tapId('login-submit');
+  await page.waitForTimeout(2500);
+  await check('Logging back in works', 'TPAY BALANCE');
+
+  // ---- Session expiry -----------------------------------------------------
+  await tapId('tab-profile');
+  await tapId('profile-security');
+  await tapId('session-demo-expire');
+  await page.waitForTimeout(2500);
+  await checkUrl('An expired session reaches the login screen', '/login');
+  await checkId('Login says the session expired', 'login-expired');
+  await check('It says what to do about it', 'Log in again to pick up where you left off');
+
+  await byTestId('login-identifier').fill(EMAIL);
+  await byTestId('login-password').fill(PASSWORD);
+  await tapId('login-submit');
+  await page.waitForTimeout(2500);
+  await check('Signing back in after an expiry works', 'TPAY BALANCE');
+
+  // ---- Forgot password ----------------------------------------------------
+  await signedOut();
+  await tapId('welcome-login');
+  await tapId('login-forgot');
+  await check('Login → Forgot password', 'Reset your password');
+  await check('It refuses to leak who has an account', 'nobody can use this screen to find out');
+  await byTestId('forgot-identifier').fill(EMAIL);
+  await tapId('forgot-submit');
+  await page.waitForTimeout(1600);
+  await check('A reset code is sent', 'Check your email');
+  await fillOtp(OTP);
+  await tapId('verify-submit');
+  await page.waitForTimeout(1800);
+  await check('The code opens the new-password screen', 'Choose a new password');
+  await byTestId('reset-password').fill('riyadh2026spring');
+  await byTestId('reset-confirm').fill('riyadh2026spring');
+  await tapId('reset-submit');
+  await page.waitForTimeout(2500);
+  await check('Resetting the password signs the user in', 'TPAY BALANCE');
+
+  // ---- Signup, OTP and its failures ---------------------------------------
+  await signedOut();
+  await tapId('welcome-signup');
+  await check('Welcome → Signup', 'Create your account');
+  await check('Signup says how long it takes', 'Takes about 4 minutes');
+
+  await byTestId('signup-first-name').fill('Nour');
+  await byTestId('signup-last-name').fill('Adel');
+  await byTestId('signup-email').fill('nour.adel@demo.acme.sa');
+  await byTestId('signup-phone').fill('+966 55 000 1111');
+  await byTestId('signup-password').fill('short');
+  await page.waitForTimeout(600);
+  await check('Signup applies the shared password policy', 'At least 10 characters');
+  await byTestId('signup-password').fill('riyadh2026spring');
+  await page.waitForTimeout(600);
+  await check('A strong password is accepted', 'Strong enough');
+  await tapId('signup-submit');
+  await page.waitForTimeout(2000);
+
+  await check('Signup → Verify your email', 'Verify your email');
+  await check('The code destination is masked', '•');
+  await check('The demo says nothing was really sent', 'No SMS or email provider is connected yet');
+
+  await fillOtp('000000');
+  await tapId('verify-submit');
+  await page.waitForTimeout(1600);
+  await check('A wrong code is refused', "That code isn't right");
+  await check('It counts the tries left', 'tries left');
+
+  await check('Resending is held back by a countdown', 'Resend code in');
+
+  await fillOtp(OTP);
+  await tapId('verify-submit');
+  await page.waitForTimeout(2000);
+  await check('The email code opens the phone step', 'Verify your phone');
+  await fillOtp(OTP);
+  await tapId('verify-submit');
+  await page.waitForTimeout(3000);
+
+  // ---- Account created → onboarding → the existing KYC flow ---------------
+  await checkUrl('A new account lands in onboarding', '/onboarding');
+  await check('Onboarding greets the new user', 'Welcome to TPay, Nour');
+  await check('Onboarding says why verification matters', 'activate your TPay Wallet and receive your salary');
+  await check('A new account starts unverified', 'Verify your identity');
+  await check('It states the restricted limit', 'transfers are capped at');
+
+  await tapId('onboarding-verify');
+  await check('Onboarding → the existing KYC flow', 'Identity verification');
+  await check('The KYC steps are the existing ones', 'Personal information');
+  await tapId('kyc-action');
+  await check('KYC → Personal information', 'Legal first name');
+  await byTestId('kyc-first-name').fill('Nour');
+  await byTestId('kyc-last-name').fill('Adel');
+  await byTestId('kyc-dob').fill('1995-02-20');
+  await byTestId('kyc-nationality').fill('Egyptian');
+  await byTestId('kyc-address').fill('DEMO 12 Nile Street');
+  await byTestId('kyc-city').fill('Riyadh');
+  await byTestId('kyc-country').fill('Saudi Arabia');
+  await tapId('kyc-personal-submit');
+  await page.waitForTimeout(1800);
+  await tapId('kyc-document-capture');
+  await page.waitForTimeout(1600);
+  await tapId('kyc-document-submit');
+  await page.waitForTimeout(1800);
+  await tapId('kyc-review-submit');
+  await page.waitForTimeout(2000);
+  await check('Signup KYC reaches review', 'Verification in review');
+  await tapId('kyc-review-done');
+  await page.waitForTimeout(1600);
+
+  await checkUrl('Onboarding is still where the new account belongs', '/onboarding');
+  await tapId('onboarding-continue');
+  await check('Onboarding → Connect employer', 'How are you connected to Talento?');
+  await check('The employer is matched', 'Acme Technologies');
+  await tapId('connect-hired-through-talento');
+  await tapId('connect-finish');
+  await page.waitForTimeout(3000);
+  await check('Finishing onboarding opens TPay', 'TPAY BALANCE');
+  await checkUrl('The new account reaches Home', '/');
+
+  // ---- A blocked verification restricts without locking out ---------------
+  // Pushed routes sit above the tab bar, so unwind before switching tabs.
+  const home = async () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (await byTestId('tab-index').count()) break;
+      await back();
+    }
+    await tapId('tab-index');
+  };
+
+  await tapId('tab-profile');
+  await tapId('profile-kyc');
+  await tapId('kyc-demo-suspended');
+  await page.waitForTimeout(1600);
+  await check('A suspended account says so', 'Account under review');
+
+  await home();
+  await check('A suspended user still sees their balance', 'TPAY BALANCE');
+  await tapId('tab-send');
+  await checkId('A suspended user cannot send', 'send-restriction-hub');
+  await check('The reason is stated', 'paused while TPay reviews your account');
+  await check('Support is the way forward', 'Contact TPay support');
+
+  await home();
+  await tapText('Manage');
+  await checkId('A suspended user cannot spend on a card', 'cards-restriction');
+  await tapId('card-face-card_primary');
+  await tapId('card-demo-in-store');
+  await check('A card payment is declined while under review', 'Declined —');
+
+  await home();
+  await tapId('tab-profile');
+  await tapId('profile-kyc');
+  await check('The user can still read their verification status', 'Account under review');
+  await tapId('kyc-action');
+  await check('And can still reach support about it', 'Message TPay Support');
+  await back();
+  await tapId('kyc-demo-approved');
+  await page.waitForTimeout(1600);
+  await check('Clearing the review restores the account', 'Identity verified');
+
+  await home();
+  await tapId('tab-send');
+  await checkMissing('Sending works again', 'Account under review');
+
+  // ---- Back to a clean signed-in app for anything that follows ------------
+  await goHome();
+  await check('The app is signed in again', 'TPAY BALANCE');
 }

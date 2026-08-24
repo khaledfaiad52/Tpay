@@ -1,4 +1,5 @@
-import { services, unavailableBiometricAuthenticator, unreadCount } from '@/services';
+import { services, unreadCount } from '@/services';
+import { deviceBiometricAuthenticator } from '@/services/device';
 import type {
   AccountState,
   KycState,
@@ -79,7 +80,7 @@ async function loadSecurity(): Promise<SecurityData> {
     services.security.getSettings(),
     services.security.listDevices(),
     services.security.listLoginActivity(),
-    unavailableBiometricAuthenticator.getCapability(),
+    deviceBiometricAuthenticator.getCapability(),
     services.kyc.getKycStatus(),
     services.security.getAccountState(),
   ]);

@@ -40,17 +40,19 @@ export class PasswordRejectedError extends Error {
 }
 
 /**
- * The account is frozen, so nothing may move.
+ * The account may not move money.
  *
  * Thrown by every service that moves money, from one shared check, so a
- * freeze cannot be honoured in one place and forgotten in another.
+ * restriction cannot be honoured in one place and forgotten in another. The
+ * cause — a freeze the user applied, or a verification TPay declined — is on
+ * the restriction rather than in the error's name.
  */
-export class AccountFrozenError extends Error {
+export class AccountRestrictedError extends Error {
   readonly restriction: AccountRestriction;
 
   constructor(restriction: AccountRestriction) {
     super(restriction.explanation);
-    this.name = 'AccountFrozenError';
+    this.name = 'AccountRestrictedError';
     this.restriction = restriction;
   }
 }
@@ -85,6 +87,64 @@ export type CardDeclineCode =
   | 'contactless-off'
   | 'monthly-limit-reached'
   | 'atm-limit-reached';
+
+/** The identifier and password did not match anything. */
+export class InvalidCredentialsError extends Error {
+  constructor(message = "That email or password isn't right.") {
+    super(message);
+    this.name = 'InvalidCredentialsError';
+  }
+}
+
+/** The code was wrong. Carries what is left so the screen can warn in time. */
+export class OtpInvalidError extends Error {
+  readonly attemptsRemaining: number;
+
+  constructor(attemptsRemaining: number) {
+    super(
+      attemptsRemaining > 0
+        ? `That code isn't right. ${attemptsRemaining} ${attemptsRemaining === 1 ? 'try' : 'tries'} left.`
+        : "That code isn't right.",
+    );
+    this.name = 'OtpInvalidError';
+    this.attemptsRemaining = attemptsRemaining;
+  }
+}
+
+/** The code was right once, but it has run out. */
+export class OtpExpiredError extends Error {
+  constructor(message = 'That code has expired. Send a new one.') {
+    super(message);
+    this.name = 'OtpExpiredError';
+  }
+}
+
+/** Too many wrong attempts. `retryAfter` is an ISO-8601 timestamp. */
+export class TooManyAttemptsError extends Error {
+  readonly retryAfter: string;
+
+  constructor(retryAfter: string, message = 'Too many attempts. Try again in a few minutes.') {
+    super(message);
+    this.name = 'TooManyAttemptsError';
+    this.retryAfter = retryAfter;
+  }
+}
+
+/** The session ran out. The app must return to the login screen. */
+export class SessionExpiredError extends Error {
+  constructor(message = 'Your session has expired. Log in again to continue.') {
+    super(message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
+/** The request never reached anything. Distinct from a rejection. */
+export class NetworkError extends Error {
+  constructor(message = "We couldn't reach TPay. Check your connection and try again.") {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
 
 /** The device cannot do biometrics, or the user declined the prompt. */
 export class BiometricUnavailableError extends Error {

@@ -25,6 +25,7 @@ export {
   resetNotifications,
   resetRequests,
   resetSecurity,
+  resetSession,
   resetStore,
   resetSupport,
   resetTransfers,

@@ -1,12 +1,12 @@
 import { meetsRequirement, NotFoundError, PasswordRejectedError } from '@/services/contracts';
 import type {
-  AccountState,
   BiometricAuthenticator,
   PasswordChange,
   PasswordPolicy,
   SecurityService,
 } from '@/services/contracts';
 import type { BiometricCapability, LoginEvent, SecuritySettings, TrustedDevice } from '@/types';
+import { currentAccountState } from './accountGuard';
 import { mockDevices, mockLoginActivity, mockSecuritySettings } from './data/fixtures';
 import { respond } from './latency';
 
@@ -57,24 +57,9 @@ export function passwordProblem(
   return undefined;
 }
 
-/**
- * The account-level gate, derived from the one freeze flag.
- *
- * Exported so the services that move money can read it synchronously; they
- * must not keep a copy or decide for themselves.
- */
-export function currentAccountState(): AccountState {
-  if (!settings.accountFrozen) return { frozen: false };
-  return {
-    frozen: true,
-    restriction: {
-      code: 'account-frozen',
-      title: 'Your account is frozen',
-      explanation:
-        'You froze this account, so cards and transfers are blocked. Unfreeze it in Security to start moving money again.',
-      action: { kind: 'unfreeze-account', label: 'Unfreeze in Security' },
-    },
-  };
+/** The raw stored preferences, for the shared account-state gate to read. */
+export function currentSecuritySettings(): SecuritySettings {
+  return settings;
 }
 
 export const mockSecurityService: SecurityService = {

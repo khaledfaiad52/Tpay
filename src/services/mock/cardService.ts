@@ -21,7 +21,7 @@ import {
   type Money,
   type Transaction,
 } from '@/types';
-import { accountFreezeError } from './accountGuard';
+import { accountRestrictionError } from './accountGuard';
 import {
   mockCardCategories,
   mockCardControls,
@@ -239,10 +239,10 @@ export const mockCardService: CardService = {
     if (card.status !== 'frozen') {
       return Promise.reject(new Error('That card is not frozen.'));
     }
-    // The account-level freeze outranks the card's own: unfreezing a card
-    // while the whole account is frozen would be a lie.
-    const frozen = accountFreezeError();
-    if (frozen) return Promise.reject(frozen);
+    // The account-level restriction outranks the card's own: unfreezing a
+    // card while the account itself cannot spend would be a lie.
+    const restricted = accountRestrictionError();
+    if (restricted) return Promise.reject(restricted);
     return respond(
       'cardService.unfreezeCard',
       replace({ ...card, status: 'active', statusReason: undefined }),
@@ -320,10 +320,10 @@ export const mockCardService: CardService = {
   },
 
   authorizePurchase: (request) => {
-    // The account gate comes first: an account freeze blocks every card at
-    // once, whatever any individual card says.
-    const frozen = accountFreezeError();
-    if (frozen) return Promise.reject(frozen);
+    // The account gate comes first: a freeze or a blocked verification stops
+    // every card at once, whatever any individual card says.
+    const restricted = accountRestrictionError();
+    if (restricted) return Promise.reject(restricted);
 
     const card = find(request.cardId);
     if (!card) return Promise.reject(new NotFoundError('Card', request.cardId));

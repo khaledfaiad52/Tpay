@@ -35,6 +35,18 @@ export type {
   CardStatus,
 } from './card';
 export type {
+  EmployerConnection,
+  OtpChallenge,
+  OtpPurpose,
+  Session,
+  SessionEndReason,
+  SessionMethod,
+  SessionState,
+  SessionStatus,
+  SignupStage,
+  SignupState,
+} from './session';
+export type {
   AccountManager,
   ContractStatus,
   Employer,

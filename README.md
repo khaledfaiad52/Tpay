@@ -12,7 +12,7 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 
 ---
 
-## Status — Phase 5B complete
+## Status — Phase 6 complete
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -22,11 +22,12 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | 4 | Salary, employer, benefits, documents, requests | **Done** |
 | 5A | Identity verification, Profile, Security, Support, notifications | **Done** |
 | 5B | TPay Card — cards, details, freeze, controls, limits, replacement | **Done** |
-| 6 | Polish, testing, error/loading/empty states across the app | Not started |
+| 6 | Authentication, signup, OTP, onboarding, biometric unlock | **Done** |
 
-Every screen in the approved design is now built. Authentication (login,
-signup, OTP) is a separate future phase and is deliberately not implemented —
-there is no fake production auth anywhere in this repository.
+Every screen in the approved design is built, and the app now has a front
+door: it starts signed out, and nothing authenticated renders without a
+session. The mock session adapter is **not** production security — see
+[Authentication](#authentication-is-a-shape-not-a-guarantee).
 
 ---
 
@@ -83,8 +84,12 @@ processing, success, failure and transfer detail) → Salary, payslips,
 employment, documents, requests and benefits → Profile, username, Security,
 trusted devices, notifications, Support and identity verification through
 every state → Cards, card details, freeze, controls, limits, PIN, replacement
-and activation, with back navigation at each step and balance assertions after
-every transfer and every card payment.
+and activation → Welcome, login, logout, session expiry, password reset,
+signup with OTP failures, onboarding into the existing KYC flow, and a
+suspended account that can still sign in but cannot spend. Back navigation is
+checked at each step, balances after every transfer and card payment, and
+every authenticated route is asked for without a session to prove the guard
+holds.
 
 Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
@@ -93,6 +98,9 @@ Note that a plain static file server cannot resolve dynamic routes
 ### Environment
 
 No secrets are needed to run the app — it ships with a mock service layer.
+The demo credentials are fictional and live in `src/services/mock/sessionService.ts`:
+sign in as `khaled.faiad@demo.acme.sa` with `demo-password`, and use `419204`
+for any one-time code. None of that is a security mechanism.
 Copy [`.env.example`](./.env.example) to `.env.local` to change the adapter set
 or to demo loading and error states.
 
@@ -107,6 +115,8 @@ is expected to live.
 ```
 src/
   app/              expo-router routes — file structure is the navigation graph
+    (auth)/         welcome, login, signup, verify, password reset
+    onboarding/     the bridge from a new account into the existing KYC flow
     (tabs)/         Home · Wallet · Send · Benefits · Profile
   theme/            colours, type ramp, spacing, radii, shadows
   icons/            24×24 stroked icon set (no emoji, no icon fonts)
@@ -119,10 +129,12 @@ src/
     work/           salary, document and request presentation
     account/        verification status, steps, restrictions and demo callbacks
     card/           card faces, spend meter, delivery tracker, card presentation
+    auth/           session provider, root guard, OTP field, step rail
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
     mock/           the adapter set that backs the app today
+    device/         platform capabilities (biometrics), not provider adapters
     registry.ts     resolves one adapter set for the whole app
   types/            domain model — Money, Transaction, Account, Card, …
   hooks/            useAsyncData and one data hook per screen area
@@ -131,10 +143,10 @@ src/
 
 ### Provider abstraction
 
-The app never imports a financial provider. It consumes sixteen services —
+The app never imports a financial provider. It consumes seventeen services —
 `user`, `wallet`, `account`, `transaction`, `transfer`, `fx`, `card`, `kyc`,
 `salary`, `employment`, `benefits`, `documents`, `requests`, `security`,
-`support`, `notifications` — declared as interfaces in
+`support`, `notifications`, `session` — declared as interfaces in
 `src/services/contracts` and resolved through `src/services/registry.ts`:
 
 ```ts
@@ -232,6 +244,47 @@ breached, `TransferLimitExceededError` carries the whole limit — the amount,
 the explanation and the single action that lifts it — so the screen explains
 rather than just refusing.
 
+### Authentication is a shape, not a guarantee
+
+`sessionService` has four states — `SIGNED_OUT`, `AUTHENTICATING`,
+`AUTHENTICATED`, `SESSION_EXPIRED` — and one adapter behind them. **The mock
+adapter is not security.** It compares a fictional password on the device,
+accepts one fixed code, and mints a fictional token. It exists so the app can
+be built and tested against the real shape of a session; a real identity
+backend implements the same contract and nothing above it changes.
+
+There is no SMS or email provider. The verification screen says so on the
+screen rather than implying a message was sent.
+
+### The root guard, not a branch per screen
+
+`SessionProvider` holds the session; `AuthGuard` decides what may render:
+
+```
+launch → restoreSession()
+  AUTHENTICATED    → Home (or /onboarding, if signup is unfinished)
+  SESSION_EXPIRED  → /login?expired=1, with the reason on screen
+  SIGNED_OUT       → /welcome
+```
+
+A screen is signed-out-reachable purely by living in the `(auth)` group, so
+adding one adds nothing to the guard. No authenticated screen carries a
+signed-out branch, and asking for `/wallet`, `/cards` or `/security` without a
+session lands on Welcome — which is exactly what the E2E flows assert, one URL
+at a time.
+
+Logging out is a session transition, not a message: the session is cleared and
+the guard moves the user to the login screen.
+
+### Onboarding reuses the verification flow
+
+Signup runs details → email code → phone code → account created, and the new
+session is then held in `/onboarding` until it finishes. Onboarding explains
+why — *verify your identity to activate your TPay Wallet and receive your
+salary* — and hands straight over to the **existing** `/kyc` screens and
+`kycService`. There is no second KYC implementation; the guard simply lets the
+`kyc` and `support` routes through while onboarding is unfinished.
+
 ### One account state gates every movement of money
 
 A freeze is not a flag each screen interprets for itself. `securityService`
@@ -244,10 +297,24 @@ requireActiveAccount();   // throws AccountFrozenError with the restriction
 
 `quoteTransfer`, `createTransfer`, `quoteExchange`, `executeExchange`,
 `authorizePurchase` and `unfreezeCard` all go through it, and each one checks
-again at the point of commitment — a freeze applied while the user sat on a
-review screen still stops the money. `AccountFrozenError` carries the
+again at the point of commitment — a restriction applied while the user sat on
+a review screen still stops the money. `AccountRestrictedError` carries the
 restriction, so `RestrictionNotice` shows the same explanation and the same
 route out of it on every screen.
+
+The state folds together the two things that stop money, so no service has to
+know about both:
+
+| Cause | Code | What the user is offered |
+| --- | --- | --- |
+| The user froze the account | `account-frozen` | Unfreeze in Security |
+| Verification declined | `verification-declined` | Contact TPay support |
+| Verification suspended | `account-under-review` | Contact TPay support |
+
+A declined or suspended verification **never locks anyone out**. Signing in,
+reading the account, seeing the reason, checking verification status and
+messaging support all keep working — only money movement and card spending
+stop.
 
 ### Verification, all seven states
 
@@ -274,16 +341,28 @@ refused by the service. Changing the minimum is one edit in the adapter.
 
 ### Biometrics are claimed only when they exist
 
-`BiometricAuthenticator` is a separate contract from `SecurityService`,
-because it is answered by the platform rather than by TPay's backend. There is
-no native module yet, so the shipped implementation reports
-`available: false` with a reason, and `authenticate()` rejects. Nothing in the
-app pretends a face was checked. Turning the switch on is recorded as a stored
-preference and the screen says plainly that the device cannot honour it yet.
+`BiometricAuthenticator` is a separate contract from `SecurityService`, because
+it is answered by the platform rather than by TPay's backend — which is also
+why it is deliberately **not** in the service registry. There is one
+implementation, `deviceBiometricAuthenticator` in `src/services/device`, built
+on `expo-local-authentication`, and every place that needs a face check goes
+through it: unlocking the app, turning the Security switch on, and the seams
+already in place for transfer confirmation and card-detail reveal.
 
-The transfer confirmation seam (`TransferConfirmation`) already carries
-`method` and an optional attestation `token`, so connecting a native module is
-a service swap, not a flow change.
+It never claims a capability the device does not have. No hardware, nothing
+enrolled, or no native module at all (the web build) and `getCapability()` says
+so with a reason while `authenticate()` rejects. The login screen offers
+biometric unlock only when the device can actually do it **and** the user
+turned it on here; otherwise it falls back to the password without comment.
+Turning the Security switch on runs the real check once, so the switch can only
+be set by someone who has passed it.
+
+Signing out forgets biometric unlock — being forgotten is the point of signing
+out.
+
+The transfer confirmation seam (`TransferConfirmation`) and
+`CardAuthorization` already carry `method` and an optional attestation
+`token`, so those flows are a service swap away, not a redesign.
 
 ### The card is not a second wallet
 

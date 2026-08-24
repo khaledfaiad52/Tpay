@@ -35,13 +35,27 @@ export {
 } from './requestsService';
 export { mockSalaryService } from './salaryService';
 export {
-  currentAccountState,
+  currentSecuritySettings,
   mockSecurityService,
   passwordProblem,
   resetSecurity,
   unavailableBiometricAuthenticator,
 } from './securityService';
-export { accountCanTransact, accountFreezeError, requireActiveAccount } from './accountGuard';
+export {
+  accountCanTransact,
+  accountRestrictionError,
+  currentAccountState,
+  requireActiveAccount,
+} from './accountGuard';
+export {
+  biometricUnlockEnabled,
+  demoOtpCode,
+  demoPassword,
+  judgeOtp,
+  maskDestination,
+  mockSessionService,
+  resetSession,
+} from './sessionService';
 export { mockSupportService, resetSupport, supportTopics } from './supportService';
 export { filterTransactions, mockTransactionService } from './transactionService';
 export {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  AccountFrozenError,
+  AccountRestrictedError,
   services,
   totalDebit,
   type AccountRestriction,
@@ -121,7 +121,7 @@ export function useExchange(): ExchangeState {
         },
         (cause: unknown) => {
           if (cancelled) return;
-          if (cause instanceof AccountFrozenError) {
+          if (cause instanceof AccountRestrictedError) {
             setRestriction(cause.restriction);
             setFailure(cause.message);
             return;
@@ -170,7 +170,7 @@ export function useExchange(): ExchangeState {
       setAmountText('');
       return result.targetAmount;
     } catch (cause) {
-      if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
+      if (cause instanceof AccountRestrictedError) setRestriction(cause.restriction);
       setFailure(cause instanceof Error ? cause.message : 'That exchange did not go through.');
       return undefined;
     } finally {

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 
 import { parseAmount } from '@/hooks/useExchange';
 import {
-  AccountFrozenError,
+  AccountRestrictedError,
   services,
   TransferLimitExceededError,
   type AccountRestriction,
@@ -142,7 +142,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     } catch (cause) {
       setQuote(undefined);
       if (cause instanceof TransferLimitExceededError) setLimitBreach(cause.limit);
-      if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
+      if (cause instanceof AccountRestrictedError) setRestriction(cause.restriction);
       setQuoteError(
         cause instanceof Error ? cause.message : "We couldn't price that transfer.",
       );
@@ -163,7 +163,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
         });
         setResult(next);
       } catch (cause) {
-        if (cause instanceof AccountFrozenError) setRestriction(cause.restriction);
+        if (cause instanceof AccountRestrictedError) setRestriction(cause.restriction);
         setSubmitError(
           cause instanceof Error ? cause.message : 'That transfer did not go through.',
         );

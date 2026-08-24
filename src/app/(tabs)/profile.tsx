@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { KycStatusCard, presentKyc } from '@/components/account';
+import { useSession } from '@/components/auth';
 import {
   Avatar,
   Card,
@@ -23,6 +24,7 @@ import { colors, radius } from '@/theme';
 /** Who you are on TPay: identity, work, security and support in one place. */
 export default function ProfileScreen() {
   const data = useProfileData();
+  const session = useSession();
   const { showToast } = useToast();
   useRefreshOnFocus(data.reload);
 
@@ -59,8 +61,10 @@ export default function ProfileScreen() {
   };
 
   const signOut = async () => {
+    // A real session transition, not a message: the guard sends the user to
+    // the login screen the moment the session is gone.
     await services.user.signOut();
-    showToast('Signed out of this device');
+    await session.signOut();
   };
 
   return (

@@ -1,7 +1,13 @@
 export {
-  AccountFrozenError,
+  AccountRestrictedError,
   BiometricUnavailableError,
   CardDeclinedError,
+  InvalidCredentialsError,
+  NetworkError,
+  OtpExpiredError,
+  OtpInvalidError,
+  SessionExpiredError,
+  TooManyAttemptsError,
   InsufficientFundsError,
   NotFoundError,
   PasswordRejectedError,
@@ -49,6 +55,7 @@ export { meetsRequirement } from './securityService';
 export type {
   AccountRestriction,
   AccountRestrictionAction,
+  AccountRestrictionCode,
   AccountState,
   BiometricAuthenticator,
   PasswordChange,
@@ -64,6 +71,7 @@ export type {
   SupportTopicSummary,
 } from './supportService';
 export type { SalaryService } from './salaryService';
+export type { Credentials, SessionService, SignupDraft } from './sessionService';
 export type {
   TransactionPage,
   TransactionQuery,

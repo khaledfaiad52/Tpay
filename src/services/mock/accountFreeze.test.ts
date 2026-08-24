@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { AccountFrozenError, meetsRequirement } from '@/services/contracts';
+import { AccountRestrictedError, meetsRequirement } from '@/services/contracts';
 import { fromMajor } from '@/types';
-import { accountCanTransact, requireActiveAccount } from './accountGuard';
+import { accountCanTransact, currentAccountState, requireActiveAccount } from './accountGuard';
 import { mockCardService, resetCards } from './cardService';
 import { getAccounts, resetStore } from './data/store';
 import { mockFxService } from './fxService';
 import { resetKyc } from './kycService';
 import { configureMockBehaviour } from './latency';
-import { currentAccountState, mockSecurityService, resetSecurity } from './securityService';
+import { mockSecurityService, resetSecurity } from './securityService';
 import { mockTransferService, resetTransfers } from './transferService';
 
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
@@ -41,7 +41,7 @@ describe('the account-state gate', () => {
 
   it('throws from the one shared guard', async () => {
     await freeze();
-    assert.throws(() => requireActiveAccount(), AccountFrozenError);
+    assert.throws(() => requireActiveAccount(), AccountRestrictedError);
   });
 
   it('publishes the same state through the service', async () => {
@@ -60,7 +60,7 @@ describe('a frozen account cannot move money', () => {
 
   it('refuses to quote a transfer', async () => {
     await freeze();
-    await assert.rejects(quote, AccountFrozenError);
+    await assert.rejects(quote, AccountRestrictedError);
   });
 
   it('refuses to create a transfer booked before the freeze', async () => {
@@ -68,7 +68,7 @@ describe('a frozen account cannot move money', () => {
     await freeze();
     await assert.rejects(
       () => mockTransferService.createTransfer({ quoteId: priced.id }),
-      AccountFrozenError,
+      AccountRestrictedError,
     );
   });
 
@@ -81,7 +81,7 @@ describe('a frozen account cannot move money', () => {
           targetAccountId: 'acc_sar',
           sendAmount: fromMajor(100, 'USD'),
         }),
-      AccountFrozenError,
+      AccountRestrictedError,
     );
   });
 
@@ -92,7 +92,7 @@ describe('a frozen account cannot move money', () => {
       sendAmount: fromMajor(100, 'USD'),
     });
     await freeze();
-    await assert.rejects(() => mockFxService.executeExchange(priced.id), AccountFrozenError);
+    await assert.rejects(() => mockFxService.executeExchange(priced.id), AccountRestrictedError);
   });
 
   it('refuses a card payment', async () => {
@@ -104,14 +104,14 @@ describe('a frozen account cannot move money', () => {
           amount: fromMajor(10, 'USD'),
           merchant: 'Panda Hypermarket',
         }),
-      AccountFrozenError,
+      AccountRestrictedError,
     );
   });
 
   it('refuses to unfreeze a card while the whole account is frozen', async () => {
     await mockCardService.freezeCard('card_primary');
     await freeze();
-    await assert.rejects(() => mockCardService.unfreezeCard('card_primary'), AccountFrozenError);
+    await assert.rejects(() => mockCardService.unfreezeCard('card_primary'), AccountRestrictedError);
   });
 
   it('lets everything through again once unfrozen', async () => {
