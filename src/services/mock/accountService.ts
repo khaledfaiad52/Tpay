@@ -1,7 +1,8 @@
+import { NotFoundError } from '@/services/contracts';
 import type { AccountService } from '@/services/contracts';
 import { mockAccountDetails } from './data/fixtures';
 import { findAccount, getAccounts } from './data/store';
-import { NotFoundError, respond } from './latency';
+import { respond } from './latency';
 
 export const mockAccountService: AccountService = {
   listAccounts: () => respond('accountService.listAccounts', getAccounts()),

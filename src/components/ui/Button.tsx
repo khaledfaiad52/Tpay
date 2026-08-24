@@ -4,7 +4,15 @@ import { colors, radius } from '@/theme';
 import { Text } from './Text';
 import { Tappable } from './Tappable';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ink' | 'danger';
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'ink'
+  | 'danger'
+  /** White ground, deep-green label — a primary action on a dark screen. */
+  | 'light'
+  /** Outlined in white — a secondary action on a dark screen. */
+  | 'ghostOnDark';
 
 export type ButtonProps = {
   label: string;
@@ -26,6 +34,15 @@ const VARIANTS: Record<ButtonVariant, { container: ViewStyle; foreground: string
   },
   ink: { container: { backgroundColor: colors.ink }, foreground: colors.onDark },
   danger: { container: { backgroundColor: colors.danger }, foreground: colors.onDark },
+  light: { container: { backgroundColor: colors.surface }, foreground: colors.primaryDark },
+  ghostOnDark: {
+    container: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.22)',
+    },
+    foreground: colors.onDark,
+  },
 };
 
 export function Button({

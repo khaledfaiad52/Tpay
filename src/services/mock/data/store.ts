@@ -7,16 +7,10 @@
  * a real backend replaces it wholesale.
  */
 import type { Account, CurrencyCode, Money, Transaction } from '@/types';
-import { mockAccounts, mockTotalBalance, mockTransactions } from './fixtures';
+import { mockAccounts, mockTransactions } from './fixtures';
 
 let accounts: Account[] = mockAccounts.map((account) => ({ ...account }));
 let transactions: Transaction[] = [...mockTransactions];
-/**
- * The USD-equivalent total is reported by the provider rather than summed
- * client-side — it is struck at the provider's own aggregate rates. We hold it
- * here and move it only by the amounts an operation actually costs.
- */
-let totalUsd: Money = mockTotalBalance;
 
 export function getAccounts(): readonly Account[] {
   return accounts;
@@ -32,15 +26,6 @@ export function findAccountByCurrency(currency: CurrencyCode): Account | undefin
 
 export function getTransactions(): readonly Transaction[] {
   return transactions;
-}
-
-export function getTotalBalance(): Money {
-  return totalUsd;
-}
-
-/** Applies a signed delta to the USD-equivalent total. */
-export function adjustTotalBalance(deltaMinorUnits: number): void {
-  totalUsd = { ...totalUsd, minorUnits: totalUsd.minorUnits + deltaMinorUnits };
 }
 
 /** Applies a signed delta, in the account's own currency. */
@@ -63,5 +48,4 @@ export function recordTransactions(entries: readonly Transaction[]): void {
 export function resetStore(): void {
   accounts = mockAccounts.map((account) => ({ ...account }));
   transactions = [...mockTransactions];
-  totalUsd = mockTotalBalance;
 }

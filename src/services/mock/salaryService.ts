@@ -1,6 +1,7 @@
+import { NotFoundError } from '@/services/contracts';
 import type { SalaryService } from '@/services/contracts';
 import { mockNextSalary, mockSalaryHistory } from './data/fixtures';
-import { NotFoundError, respond } from './latency';
+import { respond } from './latency';
 
 export const mockSalaryService: SalaryService = {
   getNextSalary: () => respond('salaryService.getNextSalary', mockNextSalary),

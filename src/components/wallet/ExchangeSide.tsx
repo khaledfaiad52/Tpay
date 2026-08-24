@@ -2,7 +2,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 import { AmountText, Card, Tappable, Text } from '@/components/ui';
 import { Icon } from '@/icons';
-import { colors, fonts, radius, tabularNums } from '@/theme';
+import { colors, fonts, inputReset, radius, tabularNums } from '@/theme';
 import type { Account, Money } from '@/types';
 import { formatMoney, formatMoneyParts } from '@/utils';
 
@@ -107,5 +107,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
     padding: 0,
     ...tabularNums,
+    ...inputReset,
   },
 });

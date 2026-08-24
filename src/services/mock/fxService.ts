@@ -5,7 +5,8 @@ import type {
   FxService,
 } from '@/services/contracts';
 import { minorUnitFactor, type CurrencyCode, type Money, type Transaction } from '@/types';
-import { adjustBalance, adjustTotalBalance, findAccount, recordTransactions } from './data/store';
+import { InsufficientFundsError, QuoteExpiredError } from '@/services/contracts';
+import { adjustBalance, findAccount, recordTransactions } from './data/store';
 import { respond } from './latency';
 
 /** Indicative demo rates against USD. Replaced by a provider adapter later. */
@@ -35,20 +36,6 @@ export function rateBetween(from: CurrencyCode, to: CurrencyCode): number {
 export function convert(amount: Money, to: CurrencyCode, rate: number): Money {
   const major = (amount.minorUnits / minorUnitFactor(amount.currency)) * rate;
   return { minorUnits: Math.round(major * minorUnitFactor(to)), currency: to };
-}
-
-export class QuoteExpiredError extends Error {
-  constructor() {
-    super('This rate has expired. Refresh to get a new one.');
-    this.name = 'QuoteExpiredError';
-  }
-}
-
-export class InsufficientFundsError extends Error {
-  constructor() {
-    super('There is not enough in that account for this exchange.');
-    this.name = 'InsufficientFundsError';
-  }
 }
 
 /** Quotes issued this session, so `executeExchange` can settle against them. */
@@ -134,7 +121,9 @@ export const mockFxService: FxService = {
     const debit = totalDebit(quote);
     const source = findAccount(quote.sourceAccountId);
     if (!source || source.balance.minorUnits < debit.minorUnits) {
-      return Promise.reject(new InsufficientFundsError());
+      return Promise.reject(
+        new InsufficientFundsError('There is not enough in that account for this exchange.'),
+      );
     }
 
     const occurredAt = new Date().toISOString();
@@ -173,9 +162,8 @@ export const mockFxService: FxService = {
 
     adjustBalance(quote.sourceAccountId, { ...debit, minorUnits: -debit.minorUnits });
     adjustBalance(quote.targetAccountId, quote.targetAmount);
-    // An exchange is value-neutral apart from the spread, so the one balance
-    // moves by the fee only.
-    adjustTotalBalance(-convert(quote.fee, 'USD', rateBetween(quote.from, 'USD')).minorUnits);
+    // The headline balance is derived from the accounts, so moving them is
+    // enough — there is no separate total to keep in step.
     recordTransactions([sourceTransaction, targetTransaction]);
     exchangeQuotes.delete(quoteId);
 

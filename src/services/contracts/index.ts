@@ -1,3 +1,9 @@
+export {
+  InsufficientFundsError,
+  NotFoundError,
+  QuoteExpiredError,
+  UnsupportedCorridorError,
+} from './errors';
 export type { AccountService } from './accountService';
 export type { BenefitsService } from './benefitsService';
 export type { CardService } from './cardService';
@@ -22,12 +28,17 @@ export type {
   TransactionService,
 } from './transactionService';
 export type {
+  Corridor,
   Recipient,
+  RecipientDraft,
   RecipientKind,
+  Transfer,
   TransferQuote,
+  TransferQuoteRequest,
   TransferRequest,
   TransferResult,
   TransferService,
+  TransferStatus,
 } from './transferService';
 export type { UserService } from './userService';
 export type { WalletService } from './walletService';

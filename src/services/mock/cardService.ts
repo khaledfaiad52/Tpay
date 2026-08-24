@@ -1,7 +1,8 @@
+import { NotFoundError } from '@/services/contracts';
 import type { CardService } from '@/services/contracts';
 import type { Card } from '@/types';
 import { mockCard } from './data/fixtures';
-import { NotFoundError, respond } from './latency';
+import { respond } from './latency';
 
 /** Card state is mutable within a session so freeze/unfreeze is observable. */
 let card: Card = mockCard;

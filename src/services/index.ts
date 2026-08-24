@@ -13,12 +13,10 @@ export const services = resolveServices(appConfig.provider);
 export { appConfig, type AppConfig } from './config';
 export { resolveServices, type ProviderId, type ServiceRegistry } from './registry';
 export * from './contracts';
-export { totalDebit } from './mock';
+export { totalBalanceOf, totalDebit } from './mock';
 export {
   configureMockBehaviour,
-  InsufficientFundsError,
   MockServiceError,
-  NotFoundError,
-  QuoteExpiredError,
   resetStore,
+  resetTransfers,
 } from './mock';

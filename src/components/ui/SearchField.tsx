@@ -1,7 +1,7 @@
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { Icon } from '@/icons';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { colors, fonts, inputReset, radius, spacing } from '@/theme';
 
 export type SearchFieldProps = {
   value: string;
@@ -56,5 +56,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
     padding: 0,
     minHeight: spacing.xl,
+    ...inputReset,
   },
 });

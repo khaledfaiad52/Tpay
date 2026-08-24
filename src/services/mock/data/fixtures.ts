@@ -85,9 +85,6 @@ export const mockAccounts: readonly Account[] = [
   },
 ];
 
-/** USD-equivalent of every account combined — the "one balance" figure. */
-export const mockTotalBalance = fromMajor(12450, 'USD');
-
 /**
  * Shareable receiving coordinates, one set per currency account.
  * Every value is masked or clearly marked DEMO — these are not real bank

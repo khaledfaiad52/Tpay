@@ -1,7 +1,8 @@
+import { NotFoundError } from '@/services/contracts';
 import type { TransactionQuery, TransactionService } from '@/services/contracts';
 import type { Transaction } from '@/types';
 import { getTransactions } from './data/store';
-import { NotFoundError, respond } from './latency';
+import { respond } from './latency';
 
 /** Applies a query to a list. Exported so it can be unit tested directly. */
 export function filterTransactions(

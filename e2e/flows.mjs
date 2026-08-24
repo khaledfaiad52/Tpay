@@ -63,6 +63,20 @@ export async function runFlows(page, log) {
     await byTestId(id).click({ timeout: 8000 });
     await page.waitForTimeout(STEP_MS);
   };
+
+  /** Taps without waiting, for asserting on a state the app moves through. */
+  const tapIdNow = async (id) => {
+    await byTestId(id).click({ timeout: 8000 });
+  };
+
+  const checkUrl = async (name, fragment) => {
+    try {
+      await page.waitForURL((url) => url.pathname.includes(fragment), { timeout: 6000 });
+      return record(name, true);
+    } catch {
+      return record(name, false);
+    }
+  };
   const back = async () => {
     const button = byTestId('screen-header-back');
     if (await button.count()) await button.click();
@@ -80,7 +94,7 @@ export async function runFlows(page, log) {
   // ---- Phase 1 regression: the five tabs and Home's deep links -------------
   for (const [id, label, expected] of [
     ['tab-wallet', 'Wallet', 'TPay Wallet'],
-    ['tab-send', 'Send', 'Send money is not built yet'],
+    ['tab-send', 'Send', 'Send money'],
     ['tab-benefits', 'Benefits', 'Benefits is not built yet'],
     ['tab-profile', 'Profile', 'Profile is not built yet'],
     ['tab-index', 'Home', 'TPAY BALANCE'],
@@ -204,5 +218,174 @@ export async function runFlows(page, log) {
   await back();
   await check('back reaches Home', 'TPAY BALANCE');
 
+  await runSendFlows({
+    check,
+    checkId,
+    checkUrl,
+    tapText,
+    tapId,
+    tapIdNow,
+    back,
+    goHome,
+    byTestId,
+    page,
+  });
+
   return results;
+}
+
+/**
+ * Phase 3 — Send Money.
+ *
+ * Walks the whole flow the way a person does: pick how to address the
+ * recipient, enter their details, choose which wallet pays, enter an amount,
+ * read the review, confirm, and land on success or failure. Balances are
+ * checked afterwards, because the point of a transfer is that money moved.
+ */
+async function runSendFlows({
+  check,
+  checkUrl,
+  tapText,
+  tapId,
+  tapIdNow,
+  back,
+  goHome,
+  byTestId,
+  page,
+}) {
+  // Reloading the page resets the mock store, so these flows reload once at
+  // the start and then navigate only through the app — otherwise a balance
+  // assertion would be checking a wallet that was silently reset.
+  await goHome();
+  /**
+   * Returns to Home without reloading. Pushed routes such as Transactions
+   * sit above the tab bar, so unwind to the tabs before switching.
+   */
+  const home = async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (await byTestId('tab-index').count()) break;
+      await back();
+    }
+    await tapId('tab-index');
+  };
+
+  // ---- A bank transfer that crosses currencies -----------------------------
+  await tapId('tab-send');
+  await check('Send hub lists the ways to pay', 'Bank account');
+  await check('Send hub shows what is available', 'From your TPay balance');
+  await check('Send hub shows recent recipients', 'RECENT RECIPIENTS');
+
+  await tapId('send-method-bank-account');
+  await check('Send → Recipient', 'Step 1 of 3');
+  await byTestId('recipient-name').fill('Nour Adel');
+  await byTestId('recipient-handle').fill('EG38 0019 0005 0000 0002 2600 1');
+  await tapId('recipient-country');
+  await tapId('recipient-country');
+  await check('Country picker cycles to Egypt', 'Egypt');
+  await tapId('recipient-continue');
+
+  await check('Recipient → Amount', 'Step 2 of 3');
+  await check('Amount names the recipient', 'to Nour Adel');
+  await byTestId('send-amount').fill('1000');
+  await page.waitForTimeout(1600);
+  await check('Amount shows what the recipient receives', 'Nour receives ≈ EGP');
+  await check('Amount shows which wallet pays', 'Pay from US Dollar account');
+  await check('Amount locks a rate', 'Rate · 1 USD = 48.6000 EGP');
+
+  await tapId('send-review');
+  await check('Amount → Review', 'Step 3 of 3');
+  await check('Review shows the amount sent', 'You send');
+  await check('Review shows the fee', 'Transfer fee');
+  await check('Review shows the total debited', 'Total debited');
+  await check('Review shows what the recipient receives', 'Recipient receives');
+  await check('Review shows the FX rate', 'Exchange rate');
+  await check('Review shows the delivery estimate', '1–2 business days');
+  await check('Review states the total, fee included', '$1,002.50');
+
+  await tapIdNow('send-confirm');
+  await checkUrl('Review → Processing', '/send/processing');
+  await page.waitForTimeout(2500);
+  await check('Processing → Success', 'Money sent');
+  await check('Success reports the total debited', '$1,002.50');
+  await check('A bank payout is still processing', 'Processing');
+
+  await tapId('send-done');
+  await check('Done returns Home', 'TPAY BALANCE');
+
+  await tapId('tab-wallet');
+  await check('The USD wallet paid the amount plus the fee', '$7,247.50');
+
+  // ---- The transfer reaches the ledger ------------------------------------
+  await home();
+  await tapId('home-view-all');
+  await check('The transfer appears in Transactions', 'Nour Adel');
+  await tapText('Nour Adel');
+  await check('Its receipt shows the recipient bank', 'Banque Misr');
+  await check('Its receipt shows what was converted', 'Recipient receives');
+  await back();
+
+  // ---- A failed transfer must not move money ------------------------------
+  await home();
+  await tapId('tab-send');
+  await tapId('recent-recipient-rcp_sara');
+  await check('A recent recipient skips straight to the amount', 'Step 2 of 3');
+  await byTestId('send-amount').fill('100');
+  await page.waitForTimeout(1600);
+  await tapId('send-review');
+  await tapId('send-simulate-failure');
+  await page.waitForTimeout(2200);
+  await check('A rejected transfer says so', 'Transfer failed');
+  await check('It names the error', 'RECIPIENT_REJECTED');
+  await check('It reassures about the balance', 'Your balance is unchanged');
+
+  await tapId('send-failed-home');
+  await check('Failure returns Home', 'TPAY BALANCE');
+  await tapId('tab-wallet');
+  await check('The balance really did not move', '$7,247.50');
+
+  // ---- Sending from a non-USD wallet --------------------------------------
+  await home();
+  await tapId('tab-send');
+  await tapId('recent-recipient-rcp_mostafa');
+  await check('Mobile wallet recipient opens the amount step', 'Step 2 of 3');
+  await tapId('send-source-account');
+  await check('The source picker lists every wallet', 'Saudi Riyal');
+  await tapText('Saudi Riyal');
+  await check('The wallet paying is now SAR', 'Pay from Saudi Riyal account');
+  await byTestId('send-amount').fill('500');
+  await page.waitForTimeout(1600);
+  await check('SAR → EGP is priced', 'Mostafa receives ≈ EGP');
+  await tapId('send-review');
+  await check('The review is in the source currency', 'SAR 500');
+  await check('A mobile wallet arrives in minutes', 'Arrives in minutes');
+  await tapId('send-confirm');
+  await page.waitForTimeout(2200);
+  await check('The SAR transfer succeeds', 'Money sent');
+
+  await tapId('send-done');
+  await tapId('tab-wallet');
+  await check('The SAR wallet paid for it', 'SAR 14,694.38');
+
+  // ---- An instant TPay-to-TPay send ---------------------------------------
+  await home();
+  await tapId('tab-send');
+  await tapId('recent-recipient-rcp_ahmed');
+  await byTestId('send-amount').fill('50');
+  await page.waitForTimeout(1600);
+  await tapId('send-review');
+  await check('Sending to a TPay user arrives instantly', 'Arrives instantly');
+  await check('There is no fee to another TPay user', 'Transfer fee');
+  await check('So the total debited is just the amount', '$50.00');
+  await tapId('send-confirm');
+  await page.waitForTimeout(2200);
+  await check('The instant transfer completes', 'Money sent');
+  await check('It is completed, not processing', 'Completed');
+
+  // ---- Transfer detail ----------------------------------------------------
+  await tapText('View transfer');
+  await check('Success → Transfer detail', 'To Ahmed Mansour');
+  await check('The detail shows the payout route', 'TPay balance');
+  await check('The detail shows the reference', 'Reference');
+  await back();
+  await check('Back returns to the success screen', 'Money sent');
 }

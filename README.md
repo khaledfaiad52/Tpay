@@ -18,12 +18,12 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | --- | --- | --- |
 | 1 | Foundation, design system, navigation, Home, mock data architecture | **Done** |
 | 2 | Wallet, accounts, account details, add money, exchange, transactions | **Done** |
-| 3 | Send Money — recipient → amount → review → confirmation → success | Not started |
+| 3 | Send Money — recipient → amount → review → confirmation → success | **Done** |
 | 4 | Salary, employer, benefits, documents, requests | Not started |
 | 5 | Card, profile, KYC, security | Not started |
 | 6 | Polish, testing, error/loading/empty states across the app | Not started |
 
-Every screen outside Phases 1–2 exists as a routed placeholder, so navigation
+Every screen outside Phases 1–3 exists as a routed placeholder, so navigation
 and back navigation work end to end today.
 
 ---
@@ -65,7 +65,9 @@ built-in runner — `test/alias-loader.mjs` teaches Node the `@/…` alias so te
 import exactly the way the app does. The end-to-end flows in `e2e/flows.mjs`
 drive a real browser through the app and assert on what is visible; they cover
 Home → Wallet → Account → Account details → Add money → Exchange →
-Transactions → Transaction detail, and back navigation at each step.
+Transactions → Transaction detail → Send Money (recipient, amount, review,
+processing, success, failure and transfer detail), with back navigation at
+each step and balance assertions after every transfer.
 
 Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
@@ -96,6 +98,7 @@ src/
     money/          transaction and account presentation, receipts, filters
     home/           the Home screen's sections
     wallet/         wallet, deposit and exchange sections
+    send/           the Send Money flow's state, steps and outcomes
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
@@ -150,9 +153,24 @@ reaches the screen through `<AmountText />`.
 The TPay Wallet and the TPay Card share a single balance. `Card` carries no
 balance field, by design.
 
-The USD-equivalent total is treated as provider-reported rather than summed
-client-side, and moves only by what an operation actually costs — an exchange
-is value-neutral apart from its spread.
+The headline balance is **derived, never stored**: it is the USD-equivalent
+sum of every currency account, converted through the FX layer
+(`totalBalanceOf`). Move an account and the total follows, because there is no
+second number to keep in step.
+
+### What money costs
+
+Two rules, applied everywhere:
+
+- **The recipient receives exactly what the user entered.** A send of $1,000
+  arrives as $1,000 (or its converted value); nothing is deducted from it.
+- **The fee is charged on top.** `totalDebit` is `sendAmount + fee`, and it is
+  on the review screen before the user confirms — nobody is surprised by the
+  final figure.
+
+Any TPay wallet currency can fund a send. Which corridors TPay can actually
+deliver on lives behind `transferService.listCorridors()`, so provider limits
+never leak into a screen.
 
 ---
 

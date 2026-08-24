@@ -32,6 +32,19 @@ try {
   results = await runFlows(page, (line) => console.log(line));
 } catch (error) {
   crashed = error;
+  // A failed step is much easier to diagnose with the page it happened on.
+  try {
+    console.error(`\nAborted at ${page.url()}`);
+    console.error(
+      `Visible text: ${(await page.evaluate(() => document.body.innerText))
+        .replace(/\s+/g, ' ')
+        .slice(0, 300)}`,
+    );
+    await page.screenshot({ path: 'e2e-failure.png' });
+    console.error('Screenshot written to e2e-failure.png');
+  } catch {
+    // The page may already be gone; the original error is what matters.
+  }
 } finally {
   await browser.close();
 }

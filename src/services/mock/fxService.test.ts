@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
 import { fromMajor } from '@/types';
-import { findAccount, getTotalBalance, getTransactions, resetStore } from './data/store';
+import { findAccount, getAccounts, getTransactions, resetStore } from './data/store';
+import { InsufficientFundsError } from '@/services/contracts';
 import {
   buildExchangeQuote,
   convert,
-  InsufficientFundsError,
   mockFxService,
   rateBetween,
   totalDebit,
 } from './fxService';
+import { totalBalanceOf } from './walletService';
 import { configureMockBehaviour } from './latency';
 
 // Run the mock layer without artificial latency inside unit tests.
@@ -88,8 +89,8 @@ describe('executeExchange', () => {
     assert.ok(recorded.some((entry) => entry.direction === 'credit' && entry.type === 'fx'));
   });
 
-  it('moves the one balance by the fee only — an exchange is value-neutral', async () => {
-    const before = getTotalBalance().minorUnits;
+  it('moves the one balance by the spread only — an exchange is value-neutral', async () => {
+    const before = totalBalanceOf(getAccounts()).minorUnits;
     const quote = await mockFxService.quoteExchange({
       sourceAccountId: 'acc_usd',
       targetAccountId: 'acc_sar',
@@ -97,7 +98,10 @@ describe('executeExchange', () => {
     });
     await mockFxService.executeExchange(quote.id);
 
-    assert.equal(getTotalBalance().minorUnits, before - 250);
+    // $1,000 leaves USD and comes back as SAR at the same rate, so only the
+    // $2.50 spread is lost. Cent-rounding on the SAR leg allows a cent of drift.
+    const after = totalBalanceOf(getAccounts()).minorUnits;
+    assert.ok(Math.abs(before - after - 250) <= 1, `moved by ${before - after}`);
   });
 
   it('rejects an exchange larger than the source balance', async () => {

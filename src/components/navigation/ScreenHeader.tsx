@@ -7,6 +7,8 @@ import { colors, radius } from '@/theme';
 
 export type ScreenHeaderProps = {
   title: string;
+  /** Quiet line under the title — "Step 2 of 3 · to Ahmed Mansour". */
+  subtitle?: string;
   /** Defaults to going back; falls back to Home when there is nothing to pop. */
   onBack?: () => void;
   /** Optional trailing control, e.g. an "Exchange" shortcut. */
@@ -14,7 +16,7 @@ export type ScreenHeaderProps = {
 };
 
 /** Back chevron + title, the standard header on every pushed screen. */
-export function ScreenHeader({ title, onBack, trailing }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, onBack, trailing }: ScreenHeaderProps) {
   const handleBack =
     onBack ??
     (() => {
@@ -33,9 +35,14 @@ export function ScreenHeader({ title, onBack, trailing }: ScreenHeaderProps) {
       >
         <Icon name="arrow-left" size={18} color={colors.ink} />
       </Tappable>
-      <Text variant="headingSm" style={styles.title}>
-        {title}
-      </Text>
+      <View style={styles.titleBlock}>
+        <Text variant="headingSm">{title}</Text>
+        {subtitle ? (
+          <Text variant="captionSm" color={colors.inkMuted}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
       {trailing}
     </View>
   );
@@ -53,5 +60,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { flex: 1 },
+  titleBlock: { flex: 1, gap: 3 },
 });

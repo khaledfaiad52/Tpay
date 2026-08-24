@@ -41,8 +41,12 @@ export const type = {
   balance: { fontFamily: fonts.extrabold, fontSize: 40, letterSpacing: -1.6, lineHeight: 44 },
   /** 34/800 — balance on secondary screens. */
   balanceSm: { fontFamily: fonts.extrabold, fontSize: 34, letterSpacing: -1.36, lineHeight: 38 },
+  /** 44/800 — the amount being sent. */
+  amountDisplay: { fontFamily: fonts.extrabold, fontSize: 44, letterSpacing: -1.76, lineHeight: 46 },
   /** 28/800 — a single account's balance. */
   balanceMd: { fontFamily: fonts.extrabold, fontSize: 28, letterSpacing: -0.84, lineHeight: 30 },
+  /** 26/800 — the headline on a transfer outcome screen. */
+  outcomeTitle: { fontFamily: fonts.extrabold, fontSize: 26, letterSpacing: -0.78 },
   /** 24/800 — screen titles. */
   screenTitle: { fontFamily: fonts.extrabold, fontSize: 24, letterSpacing: -0.72 },
   /** 22/800 — the user's name in the Home greeting. */
@@ -59,12 +63,16 @@ export const type = {
   sectionTitle: { fontFamily: fonts.extrabold, fontSize: 15, letterSpacing: -0.3 },
   /** 15/800 — trailing amount on an account row. */
   amountMd: { fontFamily: fonts.extrabold, fontSize: 15 },
+  /** 15/600 — the value inside a form field. */
+  input: { fontFamily: fonts.semibold, fontSize: 15 },
   /** 14/700 — primary row label. */
   rowTitle: { fontFamily: fonts.bold, fontSize: 14 },
   /** 14/800 — transaction amount. */
   amountSm: { fontFamily: fonts.extrabold, fontSize: 14 },
   /** 13/700 — compact card titles and button labels. */
   label: { fontFamily: fonts.bold, fontSize: 13 },
+  /** 14/500 — reading copy on outcome and empty screens. */
+  rowBody: { fontFamily: fonts.medium, fontSize: 14 },
   /** 13/600 — greeting, quiet body copy. */
   body: { fontFamily: fonts.semibold, fontSize: 13 },
   /** 12/700 — link actions ("View all"), meta labels. */
