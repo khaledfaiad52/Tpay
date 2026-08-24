@@ -2,11 +2,17 @@ export {
   InsufficientFundsError,
   NotFoundError,
   QuoteExpiredError,
+  TransferLimitExceededError,
   UnsupportedCorridorError,
 } from './errors';
 export type { AccountService } from './accountService';
 export type { BenefitsService } from './benefitsService';
 export type { CardService } from './cardService';
+export type {
+  DocumentAccessResult,
+  DocumentQuery,
+  DocumentsService,
+} from './documentsService';
 export type { EmploymentService } from './employmentService';
 export type {
   ExchangeQuote,
@@ -21,6 +27,7 @@ export type {
   KycSession,
   KycState,
 } from './kycService';
+export type { RequestsService } from './requestsService';
 export type { SalaryService } from './salaryService';
 export type {
   TransactionPage,
@@ -33,6 +40,11 @@ export type {
   RecipientDraft,
   RecipientKind,
   Transfer,
+  TransferCallbackPayload,
+  TransferConfirmation,
+  TransferLimit,
+  TransferLimitPeriod,
+  TransferLimitScope,
   TransferQuote,
   TransferQuoteRequest,
   TransferRequest,

@@ -2,7 +2,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { formatDateTime } from '@/components/money';
-import { formatRecipientDestination, RecipientAvatar } from '@/components/send';
+import {
+  formatRecipientDestination,
+  isTransferSettled,
+  RecipientAvatar,
+  transferStatusLabel,
+  transferStatusTone,
+} from '@/components/send';
 import { ScreenHeader } from '@/components/navigation';
 import {
   AmountText,
@@ -14,30 +20,45 @@ import {
   Screen,
   Skeleton,
   StatusPill,
+  Tappable,
   Text,
-  type StatusPillTone,
+  useToast,
 } from '@/components/ui';
 import { useTransferDetail } from '@/hooks';
-import type { TransferStatus } from '@/services';
+import { services } from '@/services';
 import { colors } from '@/theme';
 import { formatMoney, formatShortDate } from '@/utils';
-
-const STATUS_LABELS: Record<TransferStatus, string> = {
-  processing: 'Processing',
-  completed: 'Completed',
-  failed: 'Failed',
-};
-
-const STATUS_TONES: Record<TransferStatus, StatusPillTone> = {
-  processing: 'pending',
-  completed: 'success',
-  failed: 'failed',
-};
 
 /** The full record of one send, including where it is on its way. */
 export default function TransferDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const detail = useTransferDetail(id);
+  const { showToast } = useToast();
+
+  /**
+   * Delivers a payout-network callback by hand.
+   *
+   * Nothing settles on a timer: a transfer leaves `processing` only when the
+   * network reports back. Until there is a real provider, this stands in for
+   * that webhook so the settled and returned paths can be exercised.
+   */
+  const deliverCallback = async (providerStatus: string) => {
+    try {
+      const settled = await services.transfer.handleTransferCallback({
+        transferId: id,
+        providerStatus,
+        reason:
+          providerStatus === 'returned'
+            ? 'The receiving bank returned this payment. The money is back in your account.'
+            : undefined,
+        errorCode: providerStatus === 'returned' ? 'PAYOUT_RETURNED' : undefined,
+      });
+      detail.reload();
+      showToast(`Provider reported: ${transferStatusLabel(settled.status).toLowerCase()}`);
+    } catch {
+      showToast("That callback couldn't be applied");
+    }
+  };
 
   if (detail.status === 'loading') {
     return (
@@ -80,8 +101,8 @@ export default function TransferDetailScreen() {
             {`To ${transfer.recipient.name}`}
           </Text>
           <StatusPill
-            label={STATUS_LABELS[transfer.status]}
-            tone={STATUS_TONES[transfer.status]}
+            label={transferStatusLabel(transfer.status)}
+            tone={transferStatusTone(transfer.status)}
           />
         </View>
       </FadeInUp>
@@ -140,6 +161,7 @@ export default function TransferDetailScreen() {
           variant="secondary"
           block
           style={styles.action}
+          testID="transfer-view-transaction"
           onPress={() =>
             router.push({
               pathname: '/transactions/[id]',
@@ -148,6 +170,37 @@ export default function TransferDetailScreen() {
           }
         />
       ) : null}
+
+      {isTransferSettled(transfer.status) ? null : (
+        <View style={styles.callbacks}>
+          <Text variant="captionSm" color={colors.inkFaint} style={styles.callbackNote}>
+            Waiting on the payout network. Until a real provider is connected, deliver its
+            callback by hand:
+          </Text>
+          <View style={styles.callbackRow}>
+            <Tappable
+              accessibilityRole="button"
+              testID="transfer-callback-settled"
+              onPress={() => deliverCallback('settled')}
+              style={styles.callbackButton}
+            >
+              <Text variant="action" color={colors.primary}>
+                Report settled
+              </Text>
+            </Tappable>
+            <Tappable
+              accessibilityRole="button"
+              testID="transfer-callback-returned"
+              onPress={() => deliverCallback('returned')}
+              style={styles.callbackButton}
+            >
+              <Text variant="action" color={colors.danger}>
+                Report returned
+              </Text>
+            </Tappable>
+          </View>
+        </View>
+      )}
     </Screen>
   );
 }
@@ -156,4 +209,16 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', gap: 10, paddingVertical: 12 },
   reason: { lineHeight: 18 },
   action: { paddingVertical: 15 },
+  callbacks: { gap: 10 },
+  callbackNote: { textAlign: 'center', lineHeight: 16 },
+  callbackRow: { flexDirection: 'row', gap: 10 },
+  callbackButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
 });

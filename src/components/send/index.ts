@@ -13,4 +13,9 @@ export { SendFlowProvider, useSendFlow, type SendFlowState } from './SendFlowPro
 export { SendMethodRow, type SendMethod, type SendMethodRowProps } from './SendMethodRow';
 export { SourceAccountRow, type SourceAccountRowProps } from './SourceAccountRow';
 export { StepHeader, type StepHeaderProps } from './StepHeader';
+export {
+  isTransferSettled,
+  transferStatusLabel,
+  transferStatusTone,
+} from './transferStatus';
 export { TransferOutcome, type TransferOutcomeProps } from './TransferOutcome';

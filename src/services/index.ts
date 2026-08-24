@@ -16,7 +16,9 @@ export * from './contracts';
 export { totalBalanceOf, totalDebit } from './mock';
 export {
   configureMockBehaviour,
+  DocumentUnavailableError,
   MockServiceError,
+  resetRequests,
   resetStore,
   resetTransfers,
 } from './mock';

@@ -3,17 +3,11 @@ import { router } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TransferOutcome, useSendFlow } from '@/components/send';
+import { TransferOutcome, transferStatusLabel, useSendFlow } from '@/components/send';
 import { formatDateTime } from '@/components/money';
 import { Button, Text, useToast } from '@/components/ui';
 import { colors, radius } from '@/theme';
 import { formatMoney } from '@/utils';
-
-const STATUS_LABELS = {
-  processing: 'Processing',
-  completed: 'Completed',
-  failed: 'Failed',
-} as const;
 
 /** The transfer landed. Dark, celebratory, and specific about what happens next. */
 export default function SuccessScreen() {
@@ -59,7 +53,7 @@ export default function SuccessScreen() {
         <Row label="Reference" value={transfer.reference} monospaced divided />
         <Row
           label="Status"
-          value={STATUS_LABELS[transfer.status]}
+          value={transferStatusLabel(transfer.status)}
           valueColor={colors.successOnDark}
         />
       </View>
@@ -88,7 +82,7 @@ export default function SuccessScreen() {
           onPress={async () => {
             await Clipboard.setStringAsync(
               [
-                `TPay transfer · ${STATUS_LABELS[transfer.status]}`,
+                `TPay transfer · ${transferStatusLabel(transfer.status)}`,
                 `${formatMoney(transfer.receiveAmount)} to ${transfer.recipient.name}`,
                 `Debited ${formatMoney(transfer.totalDebit)}`,
                 `Reference ${transfer.reference}`,

@@ -19,11 +19,11 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | 1 | Foundation, design system, navigation, Home, mock data architecture | **Done** |
 | 2 | Wallet, accounts, account details, add money, exchange, transactions | **Done** |
 | 3 | Send Money — recipient → amount → review → confirmation → success | **Done** |
-| 4 | Salary, employer, benefits, documents, requests | Not started |
+| 4 | Salary, employer, benefits, documents, requests | **Done** |
 | 5 | Card, profile, KYC, security | Not started |
 | 6 | Polish, testing, error/loading/empty states across the app | Not started |
 
-Every screen outside Phases 1–3 exists as a routed placeholder, so navigation
+Every screen outside Phases 1–4 exists as a routed placeholder, so navigation
 and back navigation work end to end today.
 
 ---
@@ -66,8 +66,9 @@ import exactly the way the app does. The end-to-end flows in `e2e/flows.mjs`
 drive a real browser through the app and assert on what is visible; they cover
 Home → Wallet → Account → Account details → Add money → Exchange →
 Transactions → Transaction detail → Send Money (recipient, amount, review,
-processing, success, failure and transfer detail), with back navigation at
-each step and balance assertions after every transfer.
+processing, success, failure and transfer detail) → Salary, payslips,
+employment, documents, requests and benefits, with back navigation at each
+step and balance assertions after every transfer.
 
 Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
@@ -99,6 +100,7 @@ src/
     home/           the Home screen's sections
     wallet/         wallet, deposit and exchange sections
     send/           the Send Money flow's state, steps and outcomes
+    work/           salary, document and request presentation
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
@@ -171,6 +173,23 @@ Two rules, applied everywhere:
 Any TPay wallet currency can fund a send. Which corridors TPay can actually
 deliver on lives behind `transferService.listCorridors()`, so provider limits
 never leak into a screen.
+
+### Transfers settle on a callback, not a timer
+
+A transfer runs `created → processing → completed | failed`. Nothing advances
+it on a timer: it leaves `processing` only when the payout network reports
+back through `transferService.handleTransferCallback()`, which normalises the
+provider's own vocabulary into TPay's statuses — the same shape `kycService`
+uses. A failure after the account was debited returns the money.
+
+Until a real provider is connected, the transfer detail screen delivers that
+callback by hand so both outcomes can be exercised.
+
+`transferService.listTransferLimits()` publishes the ceilings that apply. A
+limit names the conditions it holds under — KYC status, country, currency,
+corridor, payout method — so a real limit set can be expressed without
+reshaping the model. The values shipped today are deliberately generous mock
+ones.
 
 ---
 

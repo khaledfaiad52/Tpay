@@ -9,6 +9,20 @@ export {
 export { useHomeData, type HomeData } from './useHomeData';
 export { useRefreshOnFocus } from './useRefreshOnFocus';
 export {
+  useBenefit,
+  useBenefitsData,
+  useDocuments,
+  useEmploymentData,
+  usePayslips,
+  useRequestsData,
+  useSalaryData,
+  useSalaryRecord,
+  type BenefitsData,
+  type EmploymentData,
+  type RequestsData,
+  type SalaryData,
+} from './useWorkData';
+export {
   presetAmountsFor,
   useSendHubData,
   useTransferDetail,

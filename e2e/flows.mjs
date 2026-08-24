@@ -95,7 +95,7 @@ export async function runFlows(page, log) {
   for (const [id, label, expected] of [
     ['tab-wallet', 'Wallet', 'TPay Wallet'],
     ['tab-send', 'Send', 'Send money'],
-    ['tab-benefits', 'Benefits', 'Benefits is not built yet'],
+    ['tab-benefits', 'Benefits', 'benefits active through'],
     ['tab-profile', 'Profile', 'Profile is not built yet'],
     ['tab-index', 'Home', 'TPAY BALANCE'],
   ]) {
@@ -105,8 +105,8 @@ export async function runFlows(page, log) {
 
   for (const [testId, label, expected] of [
     ['home-view-all', 'Transactions', 'transactions-search'],
-    ['home-employer', 'My employer', 'My employer is not built yet'],
-    ['home-benefits', 'Benefits', 'Benefits is not built yet'],
+    ['home-employer', 'My employer', 'Acme Technologies'],
+    ['home-benefits', 'Benefits', 'benefits active through'],
   ]) {
     await tapId(testId);
     if (expected.includes(' ')) await check(`Home → ${label}`, expected);
@@ -117,8 +117,8 @@ export async function runFlows(page, log) {
 
   for (const [label, expected] of [
     ['Manage', 'TPay Card is not built yet'],
-    ['Need something from HR?', 'Requests is not built yet'],
-    ['Next salary · Acme Technologies', 'Salary is not built yet'],
+    ['Need something from HR?', 'Employment letter · bank use'],
+    ['Next salary · Acme Technologies', 'Payroll cycle open'],
   ]) {
     await tapText(label);
     await check(`Home → ${label}`, expected);
@@ -218,6 +218,17 @@ export async function runFlows(page, log) {
   await back();
   await check('back reaches Home', 'TPAY BALANCE');
 
+  await runWorkFlows({
+    check,
+    checkId,
+    tapText,
+    tapId,
+    back,
+    goHome,
+    byTestId,
+    page,
+  });
+
   await runSendFlows({
     check,
     checkId,
@@ -232,6 +243,134 @@ export async function runFlows(page, log) {
   });
 
   return results;
+}
+
+/**
+ * Phase 4 — Employment and employee services.
+ *
+ * Salary, employment, benefits, documents and requests, reached the way a
+ * person reaches them: from Home, from the employer screen, and from the
+ * Benefits tab.
+ */
+async function runWorkFlows({ check, checkId, tapText, tapId, back, goHome, byTestId, page }) {
+  await goHome();
+  const home = async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (await byTestId('tab-index').count()) break;
+      await back();
+    }
+    await tapId('tab-index');
+  };
+
+  // ---- Salary --------------------------------------------------------------
+  await tapText('Next salary · Acme Technologies');
+  await check('Home → Salary', 'NEXT SALARY');
+  await check('Salary shows the payroll cycle', 'Payroll cycle open');
+  await check('Salary counts down to payday', 'days to go');
+  await check('Salary lists what has been paid', 'Salary history');
+  await check('Salary history shows each period', 'June 2026');
+  await check('A bonus month says so', 'includes $500 bonus');
+
+  await tapId('salary-breakdown');
+  await check('Salary → breakdown', 'NET RECEIVED');
+  await check('The breakdown starts from gross', 'Gross salary');
+  await check('It itemises income tax', 'Income tax');
+  await check('It itemises social insurance', 'Social insurance (GOSI)');
+  await check('It itemises medical insurance', 'Medical insurance');
+  await check('It ends at what reached the wallet', 'Net received');
+  await check('Gross less deductions is the net', '$4,500.00');
+
+  await tapId('salary-view-payslip');
+  await check('Breakdown → Payslips', 'Verified by TPay');
+  await check('The latest payslip leads', 'July 2026');
+  await check('Earlier payslips follow', 'EARLIER');
+  await tapId('payslip-view');
+  await check('Payslips → a payslip breakdown', 'NET RECEIVED');
+  await back();
+  await back();
+  await back();
+  await check('back reaches Salary', 'NEXT SALARY');
+
+  await tapId('salary-payslips');
+  await check('Salary → Payslips directly', 'Verified by TPay');
+  await back();
+
+  // ---- Employment ----------------------------------------------------------
+  await home();
+  await tapId('home-employer');
+  await check('Home → My employer', 'Active employee');
+  await check('The employer screen names the role', 'Senior Product Designer');
+  await check('It shows when employment started', 'Employed since');
+  await check('Talento appears as the account manager, not the brand', 'Talento account manager');
+
+  await tapId('employment-details');
+  await check('Employer → Employment details', 'EMPLOYMENT');
+  await check('It names the legal employer', 'Talento EOR KSA');
+  await check('It shows the contract status', 'Signed · active');
+  await check('It groups compensation separately', 'COMPENSATION');
+  await check('It states the pay schedule', 'Monthly · last working day');
+  await back();
+  await check('back reaches the employer', 'Active employee');
+
+  // ---- Documents -----------------------------------------------------------
+  await tapId('employer-documents');
+  await check('Employer → Documents', 'Employment contract');
+  await check('Documents show an identification permit', 'Iqama · residence permit');
+  await check('Documents can be filtered', 'Payroll');
+  await tapId('filter-payroll');
+  await check('Filtering to payroll keeps payslips', 'Payslips 2026');
+  await tapId('filter-tax');
+  await check('A document still being prepared says so', 'Not ready');
+  await tapId('filter-all');
+  await back();
+
+  // ---- Requests ------------------------------------------------------------
+  await tapId('employer-requests');
+  await check('Employer → Requests', 'Employment letter · bank use');
+  await check('A request shows where it has got to', 'Processing');
+  await check('A request needing you is called out', 'Action needed');
+  await check('It says what it needs', 'We need the receipt');
+  await check('Completed requests are listed apart', 'COMPLETED');
+
+  await tapId('request-action-REQ-4102');
+  await page.waitForTimeout(1400);
+  await check('Supplying what HR asked for confirms', 'back with HR');
+
+  await tapId('requests-new');
+  await check('Requests → New request', 'What do you need?');
+  await check('It offers an employment letter', 'For banks & embassies');
+  await byTestId('request-addressed-to').fill('Emirates NBD — account opening');
+  await tapId('request-submit');
+  await page.waitForTimeout(1600);
+  await check('Submitting a request confirms with a reference', 'Request submitted — REQ-');
+  await check('The new request is listed', 'Employment letter · Emirates NBD');
+
+  // ---- Benefits ------------------------------------------------------------
+  await home();
+  await tapId('tab-benefits');
+  await check('Benefits names the employer providing them', 'benefits active through');
+  await check('Medical insurance leads', 'Medical insurance');
+  await check('Social insurance is listed', 'Social insurance · GOSI');
+  await check('Financial services are listed', 'Financial services');
+  await check('A wellness allowance is listed', 'Wellness allowance');
+  await check('An ineligible benefit says so', 'Not eligible');
+
+  await tapId('benefit-ben_medical');
+  await check('Benefits → Medical insurance', 'MEMBER ID');
+  await check('It shows the coverage limit', 'SAR 500,000 / year');
+  await check('It shows who is covered', 'You + 2 dependents');
+  await check('It offers the policy document', 'Policy document');
+  await back();
+
+  await tapId('benefit-ben_discounts');
+  await check('An ineligible benefit explains why', 'Not available yet');
+  await check('It says when it unlocks', '12 months of service');
+  await back();
+
+  await tapId('benefit-ben_wellness');
+  await check('An allowance shows what is left', 'Remaining this quarter');
+  await back();
+  await check('back reaches Benefits', 'benefits active through');
 }
 
 /**

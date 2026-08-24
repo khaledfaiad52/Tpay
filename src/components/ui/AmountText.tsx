@@ -16,7 +16,8 @@ export type AmountTextProps = {
     | 'amountXl'
     | 'amountLg'
     | 'amountMd'
-    | 'amountSm';
+    | 'amountSm'
+    | 'headingSm';
   color?: string;
   /** Renders the cents smaller and in `fractionColor`, as the balance card does. */
   emphasiseWhole?: boolean;

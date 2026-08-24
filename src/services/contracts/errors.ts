@@ -27,6 +27,17 @@ export class QuoteExpiredError extends Error {
   }
 }
 
+/** The transfer is larger than a limit that applies to this user. */
+export class TransferLimitExceededError extends Error {
+  readonly limitId: string;
+
+  constructor(limitLabel: string, limitId: string) {
+    super(`This transfer is over your ${limitLabel}.`);
+    this.name = 'TransferLimitExceededError';
+    this.limitId = limitId;
+  }
+}
+
 /** TPay cannot pay out that currency by that method — yet. */
 export class UnsupportedCorridorError extends Error {
   readonly kind: RecipientKind;

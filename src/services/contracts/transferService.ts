@@ -1,4 +1,4 @@
-import type { CurrencyCode, Money, Transaction } from '@/types';
+import type { CurrencyCode, KycStatus, Money, Transaction } from '@/types';
 
 /**
  * How the recipient is addressed. One Send Money product covers all of them —
@@ -12,6 +12,12 @@ export type RecipientKind =
   | 'international'
   | 'mobile-wallet';
 
+/**
+ * Recipients come from somewhere: what the user typed, what TPay has saved,
+ * and — once the app asks for the permission — the device address book. A
+ * contacts source becomes another way to produce a `RecipientDraft`; nothing
+ * below this line needs to change when it lands.
+ */
 export type Recipient = {
   readonly id: string;
   readonly kind: RecipientKind;
@@ -89,7 +95,13 @@ export type TransferQuoteRequest = {
   readonly sendAmount: Money;
 };
 
-export type TransferStatus = 'processing' | 'completed' | 'failed';
+/**
+ * A transfer's lifecycle: `created` the moment TPay accepts it, `processing`
+ * once it is with the payout network, then `completed` or `failed` when that
+ * network reports back. Only a provider callback moves it past `processing` —
+ * nothing settles on a timer.
+ */
+export type TransferStatus = 'created' | 'processing' | 'completed' | 'failed';
 
 /** The record of one send, independent of the ledger entries behind it. */
 export type Transfer = {
@@ -115,15 +127,45 @@ export type Transfer = {
   readonly errorCode?: string;
 };
 
+/**
+ * How the user proved it was them. Phase 5 fills this in with device
+ * biometrics; today every transfer is confirmed by tapping Confirm, and the
+ * field records that plainly rather than leaving it unsaid.
+ */
+export type TransferConfirmation = {
+  readonly method: 'tap' | 'biometric' | 'passcode';
+  /** Attestation from the device, once there is one to pass. */
+  readonly token?: string;
+};
+
 export type TransferRequest = {
   readonly quoteId: string;
   readonly reference?: string;
+  readonly confirmation?: TransferConfirmation;
   /**
    * Sandbox trigger, in the spirit of a provider's test credentials: forces
    * the outcome so failure and pending paths can be demonstrated. Real
    * adapters ignore it.
    */
   readonly demoOutcome?: 'success' | 'failure';
+};
+
+/**
+ * What a payout network tells TPay after the fact.
+ *
+ * Adapters normalise their own vocabulary into `TransferStatus` here, exactly
+ * as `kycService` does for verification — the app never sees a provider's
+ * status string.
+ */
+export type TransferCallbackPayload = {
+  /** TPay's own transfer id, or the reference the provider echoes back. */
+  readonly transferId?: string;
+  readonly reference?: string;
+  /** The provider's word for what happened: "settled", "returned", … */
+  readonly providerStatus: string;
+  /** Human-readable explanation, for a failure. */
+  readonly reason?: string;
+  readonly errorCode?: string;
 };
 
 export type TransferResult = {
@@ -145,4 +187,40 @@ export type TransferService = {
   createTransfer(request: TransferRequest): Promise<TransferResult>;
   getTransfer(transferId: string): Promise<Transfer>;
   listTransfers(): Promise<readonly Transfer[]>;
+  /**
+   * Settles or fails a transfer on word from the payout network. A failure
+   * after the account was debited returns the money.
+   */
+  handleTransferCallback(payload: TransferCallbackPayload): Promise<Transfer>;
+  /** The limits that apply to this user today. */
+  listTransferLimits(): Promise<readonly TransferLimit[]>;
+};
+
+/**
+ * A ceiling on what can be sent. Real limits come from a provider, a
+ * regulator and TPay's own risk rules at once, so a limit names the
+ * conditions it applies under rather than assuming one dimension.
+ */
+export type TransferLimitScope = {
+  /** Applies only at or below this verification level. */
+  readonly kycStatus?: KycStatus;
+  /** Recipient country. */
+  readonly country?: string;
+  /** Source currency. */
+  readonly currency?: CurrencyCode;
+  /** A specific corridor, source → payout. */
+  readonly corridor?: { readonly from: CurrencyCode; readonly to: CurrencyCode };
+  /** How the recipient is paid. */
+  readonly kind?: RecipientKind;
+};
+
+export type TransferLimitPeriod = 'per-transaction' | 'daily' | 'monthly';
+
+export type TransferLimit = {
+  readonly id: string;
+  readonly label: string;
+  readonly scope: TransferLimitScope;
+  readonly period: TransferLimitPeriod;
+  /** Always in the limit's own currency; compared after conversion. */
+  readonly max: Money;
 };

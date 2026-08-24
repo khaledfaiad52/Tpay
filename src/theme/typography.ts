@@ -55,8 +55,12 @@ export const type = {
   amountXl: { fontFamily: fonts.extrabold, fontSize: 24, letterSpacing: -0.72 },
   /** 32/800 — the figure on a transaction receipt. */
   amountHero: { fontFamily: fonts.extrabold, fontSize: 32, letterSpacing: -1.28 },
+  /** 20/800 — the employer's name on its own panel. */
+  displayXs: { fontFamily: fonts.extrabold, fontSize: 20, letterSpacing: -0.4 },
   /** 19/800 — figure inside a list card. */
   amountLg: { fontFamily: fonts.extrabold, fontSize: 19, letterSpacing: -0.38 },
+  /** 17/800 — the featured benefit's name. */
+  featureTitle: { fontFamily: fonts.extrabold, fontSize: 17, letterSpacing: -0.34 },
   /** 16/800 — inline screen headings. */
   headingSm: { fontFamily: fonts.extrabold, fontSize: 16, letterSpacing: -0.32 },
   /** 15/800 — section headers ("Recent activity"). */
@@ -65,6 +69,8 @@ export const type = {
   amountMd: { fontFamily: fonts.extrabold, fontSize: 15 },
   /** 15/600 — the value inside a form field. */
   input: { fontFamily: fonts.semibold, fontSize: 15 },
+  /** 14/800 — a card's own heading, heavier than a row title. */
+  rowTitleStrong: { fontFamily: fonts.extrabold, fontSize: 14 },
   /** 14/700 — primary row label. */
   rowTitle: { fontFamily: fonts.bold, fontSize: 14 },
   /** 14/800 — transaction amount. */
@@ -83,6 +89,8 @@ export const type = {
   captionSm: { fontFamily: fonts.semibold, fontSize: 11 },
   /** 11/700 — badge text. */
   badge: { fontFamily: fonts.bold, fontSize: 11 },
+  /** 9/800 — the format mark on a document thumbnail. */
+  thumbnail: { fontFamily: fonts.extrabold, fontSize: 9 },
   /** 10/700 — tab bar labels. */
   tab: { fontFamily: fonts.bold, fontSize: 10 },
   /** 10/600 — inactive tab bar labels, transaction status. */

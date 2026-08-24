@@ -1,21 +1,35 @@
-import type {
-  Corridor,
-  Recipient,
-  RecipientDraft,
-  RecipientKind,
-  Transfer,
-  TransferQuote,
-  TransferQuoteRequest,
-  TransferService,
-} from '@/services/contracts';
 import {
   InsufficientFundsError,
   NotFoundError,
   QuoteExpiredError,
+  TransferLimitExceededError,
   UnsupportedCorridorError,
+  type Corridor,
+  type Recipient,
+  type RecipientDraft,
+  type RecipientKind,
+  type Transfer,
+  type TransferCallbackPayload,
+  type TransferLimit,
+  type TransferLimitScope,
+  type TransferQuote,
+  type TransferQuoteRequest,
+  type TransferService,
 } from '@/services/contracts';
-import { fromMajor, type CurrencyCode, type Money, type Transaction } from '@/types';
-import { adjustBalance, findAccount, recordTransactions } from './data/store';
+import {
+  fromMajor,
+  type CurrencyCode,
+  type KycStatus,
+  type Money,
+  type Transaction,
+} from '@/types';
+import { mockUser } from './data/fixtures';
+import {
+  adjustBalance,
+  findAccount,
+  recordTransactions,
+  updateTransaction,
+} from './data/store';
 import { convert, rateBetween } from './fxService';
 import { respond } from './latency';
 
@@ -155,6 +169,61 @@ const FEE_USD_BY_KIND: Record<RecipientKind, number> = {
 /** How long a quote stays bookable. */
 const QUOTE_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Configurable mock limits.
+ *
+ * Real ceilings come from a provider, a regulator and TPay's own risk rules at
+ * once, so each entry names the conditions it applies under. These values are
+ * deliberately generous — the point is that the model can express the shape of
+ * a real limit, not that it enforces one yet.
+ */
+const LIMITS: readonly TransferLimit[] = [
+  {
+    id: 'lim_unverified_txn',
+    label: 'unverified sending limit',
+    scope: { kycStatus: 'NOT_STARTED' },
+    period: 'per-transaction',
+    max: fromMajor(500, 'USD'),
+  },
+  {
+    id: 'lim_verified_txn',
+    label: 'per-transfer limit',
+    scope: { kycStatus: 'VERIFIED' },
+    period: 'per-transaction',
+    max: fromMajor(25_000, 'USD'),
+  },
+  {
+    id: 'lim_wallet_txn',
+    label: 'mobile wallet limit',
+    scope: { kind: 'mobile-wallet' },
+    period: 'per-transaction',
+    max: fromMajor(5_000, 'USD'),
+  },
+  {
+    id: 'lim_egp_corridor',
+    label: 'Egypt corridor limit',
+    scope: { corridor: { from: 'USD', to: 'EGP' } },
+    period: 'per-transaction',
+    max: fromMajor(10_000, 'USD'),
+  },
+];
+
+/**
+ * What a payout network's own vocabulary means to TPay. Every adapter owns a
+ * table like this, so the app only ever sees a `TransferStatus`.
+ */
+const PROVIDER_STATUS_MAP: Record<string, Transfer['status']> = {
+  accepted: 'created',
+  submitted: 'processing',
+  in_transit: 'processing',
+  sent: 'processing',
+  settled: 'completed',
+  paid: 'completed',
+  returned: 'failed',
+  rejected: 'failed',
+  cancelled: 'failed',
+};
+
 /** Recipients the user chose to keep — what the Send hub lists. */
 let recipients: Recipient[] = [...SEED_RECIPIENTS];
 /**
@@ -167,6 +236,52 @@ let knownRecipients = new Map<string, Recipient>(
 );
 let transfers: Transfer[] = [];
 const quotes = new Map<string, TransferQuote>();
+
+/** True when a limit's conditions all match the transfer being priced. */
+export function limitApplies(
+  scope: TransferLimitScope,
+  context: {
+    kycStatus: KycStatus;
+    country?: string;
+    currency: CurrencyCode;
+    payoutCurrency: CurrencyCode;
+    kind: RecipientKind;
+  },
+): boolean {
+  if (scope.kycStatus && scope.kycStatus !== context.kycStatus) return false;
+  if (scope.country && scope.country !== context.country) return false;
+  if (scope.currency && scope.currency !== context.currency) return false;
+  if (scope.kind && scope.kind !== context.kind) return false;
+  if (
+    scope.corridor &&
+    (scope.corridor.from !== context.currency || scope.corridor.to !== context.payoutCurrency)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The tightest limit the transfer breaches, or nothing. Amounts are compared
+ * in the limit's own currency, so a SAR transfer is judged against a USD
+ * ceiling at the current rate.
+ */
+export function breachedLimit(
+  sendAmount: Money,
+  context: Parameters<typeof limitApplies>[1],
+  limits: readonly TransferLimit[] = LIMITS,
+): TransferLimit | undefined {
+  return limits
+    .filter((limit) => limitApplies(limit.scope, context))
+    .find((limit) => {
+      const inLimitCurrency = convert(
+        sendAmount,
+        limit.max.currency,
+        rateBetween(sendAmount.currency, limit.max.currency),
+      );
+      return inLimitCurrency.minorUnits > limit.max.minorUnits;
+    });
+}
 
 export function findCorridor(
   kind: RecipientKind,
@@ -201,6 +316,15 @@ export function buildTransferQuote(
   const receiveAmount: Money = sameCurrency
     ? request.sendAmount
     : convert(request.sendAmount, targetCurrency, rate!);
+
+  const breached = breachedLimit(request.sendAmount, {
+    kycStatus: mockUser.kycStatus,
+    country: recipient.country,
+    currency: source.currency,
+    payoutCurrency: targetCurrency,
+    kind: recipient.kind,
+  });
+  if (breached) throw new TransferLimitExceededError(breached.label, breached.id);
 
   const fee = convert(
     fromMajor(FEE_USD_BY_KIND[recipient.kind], 'USD'),
@@ -389,6 +513,55 @@ export const mockTransferService: TransferService = {
   },
 
   listTransfers: () => respond('transferService.listTransfers', transfers),
+
+  listTransferLimits: () => respond('transferService.listTransferLimits', LIMITS),
+
+  handleTransferCallback: (payload: TransferCallbackPayload) => {
+    const transfer = transfers.find(
+      (candidate) =>
+        (payload.transferId && candidate.id === payload.transferId) ||
+        (payload.reference && candidate.reference === payload.reference),
+    );
+    if (!transfer) {
+      return Promise.reject(
+        new NotFoundError('Transfer', payload.transferId ?? payload.reference ?? 'unknown'),
+      );
+    }
+
+    const status = PROVIDER_STATUS_MAP[payload.providerStatus];
+    if (!status) {
+      return Promise.reject(new Error(`Unrecognised provider status "${payload.providerStatus}"`));
+    }
+    // A settled transfer is final; a later callback cannot reopen it.
+    if (transfer.status === 'completed' || transfer.status === 'failed') {
+      return respond('transferService.handleTransferCallback', transfer);
+    }
+
+    const settled: Transfer = {
+      ...transfer,
+      status,
+      failureReason: status === 'failed' ? (payload.reason ?? transfer.failureReason) : undefined,
+      errorCode: status === 'failed' ? (payload.errorCode ?? 'PAYOUT_RETURNED') : undefined,
+    };
+
+    if (transfer.transactionId) {
+      if (status === 'completed') {
+        updateTransaction(transfer.transactionId, { status: 'completed' });
+      } else if (status === 'failed') {
+        // The money already left; a return puts it back.
+        updateTransaction(transfer.transactionId, {
+          status: 'failed',
+          failureReason: settled.failureReason,
+        });
+        adjustBalance(transfer.sourceAccountId, transfer.totalDebit);
+      }
+    }
+
+    transfers = transfers.map((candidate) =>
+      candidate.id === settled.id ? settled : candidate,
+    );
+    return respond('transferService.handleTransferCallback', settled);
+  },
 };
 
 /** Restores seeded recipients and clears this session's transfers. Tests only. */

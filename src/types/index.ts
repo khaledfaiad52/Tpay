@@ -1,7 +1,29 @@
 export type { Account, AccountDetailField, AccountDetails, AccountKind, WalletBalance } from './account';
-export type { Benefit, BenefitCategory, BenefitStatus, BenefitsSummary } from './benefits';
+export type {
+  Benefit,
+  BenefitAllowance,
+  BenefitCategory,
+  BenefitCoverage,
+  BenefitCoverageRow,
+  BenefitStatus,
+  BenefitsSummary,
+} from './benefits';
+export type {
+  DocumentCategory,
+  DocumentFormat,
+  DocumentStatus,
+  EmployeeDocument,
+} from './document';
+export type {
+  EmployeeRequest,
+  RequestDraft,
+  RequestStage,
+  RequestStatus,
+  RequestType,
+} from './request';
 export type { Card, CardFormat, CardStatus } from './card';
 export type {
+  AccountManager,
   ContractStatus,
   Employer,
   Employment,
@@ -20,6 +42,7 @@ export {
   type Money,
 } from './money';
 export type {
+  Payslip,
   SalaryLineItem,
   SalaryRecord,
   SalaryStatus,

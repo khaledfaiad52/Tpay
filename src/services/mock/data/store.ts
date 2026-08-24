@@ -44,6 +44,24 @@ export function recordTransactions(entries: readonly Transaction[]): void {
   transactions = [...entries, ...transactions];
 }
 
+/**
+ * Rewrites one transaction in place. A payout network reporting back turns a
+ * pending debit into a settled or failed one, so the ledger has to be able to
+ * change after the fact.
+ */
+export function updateTransaction(
+  transactionId: string,
+  change: Partial<Transaction>,
+): Transaction | undefined {
+  let updated: Transaction | undefined;
+  transactions = transactions.map((entry) => {
+    if (entry.id !== transactionId) return entry;
+    updated = { ...entry, ...change };
+    return updated;
+  });
+  return updated;
+}
+
 /** Restores the seed state. Used by tests. */
 export function resetStore(): void {
   accounts = mockAccounts.map((account) => ({ ...account }));
