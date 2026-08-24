@@ -4,7 +4,8 @@
  * onto these.
  */
 import type { CurrencyCode } from '@/types';
-import type { RecipientKind } from './transferService';
+import type { PasswordProblem } from './securityService';
+import type { RecipientKind, TransferLimit } from './transferService';
 
 export class NotFoundError extends Error {
   constructor(entity: string, id: string) {
@@ -27,14 +28,40 @@ export class QuoteExpiredError extends Error {
   }
 }
 
+/** A password change was refused, and why. */
+export class PasswordRejectedError extends Error {
+  readonly problem: PasswordProblem;
+
+  constructor(problem: PasswordProblem, message: string) {
+    super(message);
+    this.name = 'PasswordRejectedError';
+    this.problem = problem;
+  }
+}
+
+/** The device cannot do biometrics, or the user declined the prompt. */
+export class BiometricUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BiometricUnavailableError';
+  }
+}
+
 /** The transfer is larger than a limit that applies to this user. */
 export class TransferLimitExceededError extends Error {
   readonly limitId: string;
+  /** The whole limit, so a screen can explain the ceiling and the way past it. */
+  readonly limit: TransferLimit;
 
-  constructor(limitLabel: string, limitId: string) {
-    super(`This transfer is over your ${limitLabel}.`);
+  constructor(limit: TransferLimit) {
+    super(
+      limit.max.minorUnits === 0
+        ? `Sending is paused while your ${limit.label} applies.`
+        : `This transfer is over your ${limit.label}.`,
+    );
     this.name = 'TransferLimitExceededError';
-    this.limitId = limitId;
+    this.limitId = limit.id;
+    this.limit = limit;
   }
 }
 

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AmountEntry, prefixFor, SourceAccountRow, StepHeader, useSendFlow } from '@/components/send';
 import { CurrencyPicker } from '@/components/wallet';
@@ -93,7 +93,37 @@ export default function AmountScreen() {
         )}
       </Card>
 
-      {flow.quoteError ? (
+      {flow.limitBreach ? (
+        <Card tone="gold" testID="send-limit">
+          <View style={styles.limit}>
+            <Text variant="label" color={colors.warningText}>
+              {flow.limitBreach.max.minorUnits === 0
+                ? 'Sending is paused'
+                : `Over your ${formatMoney(flow.limitBreach.max)} transfer limit`}
+            </Text>
+            <Text variant="caption" color={colors.warningTextSoft} style={styles.limitCopy}>
+              {flow.limitBreach.explanation ??
+                `Your current verification level has a transfer limit of ${formatMoney(flow.limitBreach.max)}.`}
+            </Text>
+            {flow.limitBreach.action ? (
+              <Button
+                label={flow.limitBreach.action.label}
+                variant="secondary"
+                style={styles.limitAction}
+                testID="send-limit-action"
+                onPress={() =>
+                  flow.limitBreach?.action?.kind === 'verify-identity'
+                    ? router.push('/kyc')
+                    : router.push({
+                        pathname: '/support/new',
+                        params: { topic: 'transfers', subject: 'Transfer limit' },
+                      })
+                }
+              />
+            ) : null}
+          </View>
+        </Card>
+      ) : flow.quoteError ? (
         <Card tone="danger" testID="send-amount-error">
           <Text variant="caption" color={colors.dangerText}>
             {flow.quoteError}
@@ -131,5 +161,8 @@ function firstName(name: string): string {
 const styles = StyleSheet.create({
   content: { gap: 16 },
   summary: { marginTop: 6 },
+  limit: { gap: 6 },
+  limitCopy: { lineHeight: 17 },
+  limitAction: { marginTop: 6, paddingVertical: 11 },
   cta: { borderRadius: 16, paddingVertical: 17, marginTop: 6 },
 });

@@ -11,6 +11,7 @@ import {
   type Transfer,
   type TransferCallbackPayload,
   type TransferLimit,
+  type TransferLimitAction,
   type TransferLimitScope,
   type TransferQuote,
   type TransferQuoteRequest,
@@ -23,7 +24,7 @@ import {
   type Money,
   type Transaction,
 } from '@/types';
-import { mockUser } from './data/fixtures';
+import { currentKycStatus } from './kycService';
 import {
   adjustBalance,
   findAccount,
@@ -170,41 +171,110 @@ const FEE_USD_BY_KIND: Record<RecipientKind, number> = {
 const QUOTE_TTL_MS = 10 * 60 * 1000;
 
 /**
+ * Configurable mock ceilings, in USD major units, kept together so a risk
+ * change is one edit. A provider-backed adapter replaces the table below
+ * wholesale — nothing here is a real provider's number.
+ */
+const CEILING_USD = {
+  /** Nothing verified yet. */
+  unverified: 500,
+  /** Verification started but not finished. */
+  inProgress: 1_000,
+  /** Verification came back needing something from the user. */
+  actionRequired: 500,
+  /** Waiting on review — the user has done their part. */
+  submitted: 2_500,
+  /** Fully verified. */
+  verified: 25_000,
+  /** Account under review or declined: sending is closed, not narrowed. */
+  blocked: 0,
+  mobileWallet: 5_000,
+  egyptCorridor: 10_000,
+} as const;
+
+const VERIFY_IDENTITY: TransferLimitAction = {
+  kind: 'verify-identity',
+  label: 'Complete identity verification',
+};
+
+const CONTACT_SUPPORT: TransferLimitAction = {
+  kind: 'contact-support',
+  label: 'Contact TPay support',
+};
+
+/**
  * Configurable mock limits.
  *
  * Real ceilings come from a provider, a regulator and TPay's own risk rules at
- * once, so each entry names the conditions it applies under. These values are
- * deliberately generous — the point is that the model can express the shape of
- * a real limit, not that it enforces one yet.
+ * once, so each entry names the conditions it applies under. Verification
+ * level is the dimension that moves today: an unverified account sends a
+ * little, a verified account sends a lot, and a suspended one sends nothing.
  */
 const LIMITS: readonly TransferLimit[] = [
   {
-    id: 'lim_unverified_txn',
+    id: 'lim_kyc_blocked',
+    label: 'account review',
+    scope: { kycStatus: ['SUSPENDED', 'REJECTED'] },
+    period: 'per-transaction',
+    max: fromMajor(CEILING_USD.blocked, 'USD'),
+    explanation: 'Sending is paused while TPay reviews your account.',
+    action: CONTACT_SUPPORT,
+  },
+  {
+    id: 'lim_kyc_unverified',
     label: 'unverified sending limit',
     scope: { kycStatus: 'NOT_STARTED' },
     period: 'per-transaction',
-    max: fromMajor(500, 'USD'),
+    max: fromMajor(CEILING_USD.unverified, 'USD'),
+    explanation: 'Your current verification level has a transfer limit.',
+    action: VERIFY_IDENTITY,
+  },
+  {
+    id: 'lim_kyc_in_progress',
+    label: 'unverified sending limit',
+    scope: { kycStatus: 'IN_PROGRESS' },
+    period: 'per-transaction',
+    max: fromMajor(CEILING_USD.inProgress, 'USD'),
+    explanation: 'Your current verification level has a transfer limit.',
+    action: VERIFY_IDENTITY,
+  },
+  {
+    id: 'lim_kyc_action_required',
+    label: 'unverified sending limit',
+    scope: { kycStatus: 'ACTION_REQUIRED' },
+    period: 'per-transaction',
+    max: fromMajor(CEILING_USD.actionRequired, 'USD'),
+    explanation: 'Verification needs something more from you before limits lift.',
+    action: VERIFY_IDENTITY,
+  },
+  {
+    id: 'lim_kyc_submitted',
+    label: 'in-review sending limit',
+    scope: { kycStatus: 'SUBMITTED' },
+    period: 'per-transaction',
+    max: fromMajor(CEILING_USD.submitted, 'USD'),
+    explanation: 'Your documents are in review. Limits lift once you are verified.',
   },
   {
     id: 'lim_verified_txn',
     label: 'per-transfer limit',
     scope: { kycStatus: 'VERIFIED' },
     period: 'per-transaction',
-    max: fromMajor(25_000, 'USD'),
+    max: fromMajor(CEILING_USD.verified, 'USD'),
   },
   {
     id: 'lim_wallet_txn',
     label: 'mobile wallet limit',
     scope: { kind: 'mobile-wallet' },
     period: 'per-transaction',
-    max: fromMajor(5_000, 'USD'),
+    max: fromMajor(CEILING_USD.mobileWallet, 'USD'),
   },
   {
     id: 'lim_egp_corridor',
     label: 'Egypt corridor limit',
     scope: { corridor: { from: 'USD', to: 'EGP' } },
     period: 'per-transaction',
-    max: fromMajor(10_000, 'USD'),
+    max: fromMajor(CEILING_USD.egyptCorridor, 'USD'),
   },
 ];
 
@@ -248,7 +318,10 @@ export function limitApplies(
     kind: RecipientKind;
   },
 ): boolean {
-  if (scope.kycStatus && scope.kycStatus !== context.kycStatus) return false;
+  if (scope.kycStatus) {
+    const allowed = Array.isArray(scope.kycStatus) ? scope.kycStatus : [scope.kycStatus];
+    if (!allowed.includes(context.kycStatus)) return false;
+  }
   if (scope.country && scope.country !== context.country) return false;
   if (scope.currency && scope.currency !== context.currency) return false;
   if (scope.kind && scope.kind !== context.kind) return false;
@@ -281,6 +354,35 @@ export function breachedLimit(
       );
       return inLimitCurrency.minorUnits > limit.max.minorUnits;
     });
+}
+
+/**
+ * The verification-level ceiling in force. Every status has one, so a screen
+ * can always say what the user may send without waiting for a rejection.
+ */
+export function sendingLimitFor(
+  status: KycStatus,
+  limits: readonly TransferLimit[] = LIMITS,
+): TransferLimit {
+  const match = limits.find(
+    (limit) => limit.scope.kycStatus !== undefined && limitApplies(limit.scope, {
+      kycStatus: status,
+      currency: 'USD',
+      payoutCurrency: 'USD',
+      kind: 'tpay-user',
+    }),
+  );
+  if (match) return match;
+  // A status with no entry of its own sends under the unverified ceiling.
+  return {
+    id: 'lim_kyc_default',
+    label: 'unverified sending limit',
+    scope: { kycStatus: status },
+    period: 'per-transaction',
+    max: fromMajor(CEILING_USD.unverified, 'USD'),
+    explanation: 'Your current verification level has a transfer limit.',
+    action: VERIFY_IDENTITY,
+  };
 }
 
 export function findCorridor(
@@ -318,13 +420,13 @@ export function buildTransferQuote(
     : convert(request.sendAmount, targetCurrency, rate!);
 
   const breached = breachedLimit(request.sendAmount, {
-    kycStatus: mockUser.kycStatus,
+    kycStatus: currentKycStatus(),
     country: recipient.country,
     currency: source.currency,
     payoutCurrency: targetCurrency,
     kind: recipient.kind,
   });
-  if (breached) throw new TransferLimitExceededError(breached.label, breached.id);
+  if (breached) throw new TransferLimitExceededError(breached);
 
   const fee = convert(
     fromMajor(FEE_USD_BY_KIND[recipient.kind], 'USD'),
@@ -515,6 +617,9 @@ export const mockTransferService: TransferService = {
   listTransfers: () => respond('transferService.listTransfers', transfers),
 
   listTransferLimits: () => respond('transferService.listTransferLimits', LIMITS),
+
+  getSendingLimit: () =>
+    respond('transferService.getSendingLimit', sendingLimitFor(currentKycStatus())),
 
   handleTransferCallback: (payload: TransferCallbackPayload) => {
     const transfer = transfers.find(

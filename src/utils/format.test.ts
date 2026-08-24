@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { fromMajor, money } from '@/types';
-import { formatMoney, formatMoneyParts, formatSignedMoney, percentageOf } from './format';
+import {
+  formatDayDivider,
+  formatMoney,
+  formatMoneyParts,
+  formatRelativeDateTime,
+  formatSignedMoney,
+  formatTimeOfDay,
+  percentageOf,
+} from './format';
 
 describe('formatMoney', () => {
   it('always shows cents for symbol currencies', () => {
@@ -47,5 +55,44 @@ describe('percentageOf', () => {
 
   it('is safe when the total is zero', () => {
     assert.equal(percentageOf(10, 0), 0);
+  });
+});
+
+describe('formatTimeOfDay', () => {
+  it('uses a 24-hour clock', () => {
+    assert.equal(formatTimeOfDay('2026-08-24T18:04:00.000Z'), '18:04');
+    assert.equal(formatTimeOfDay('2026-08-24T09:41:00.000Z'), '09:41');
+  });
+});
+
+describe('formatRelativeDateTime', () => {
+  const NOW = new Date('2026-08-24T12:00:00.000Z');
+
+  it('says "Now" for something that just happened', () => {
+    assert.equal(formatRelativeDateTime('2026-08-24T11:59:30.000Z', NOW), 'Now');
+  });
+
+  it('labels earlier today with the time', () => {
+    assert.equal(formatRelativeDateTime('2026-08-24T09:41:00.000Z', NOW), 'Today, 09:41');
+  });
+
+  it('labels yesterday by name', () => {
+    assert.equal(formatRelativeDateTime('2026-08-23T18:04:00.000Z', NOW), 'Yesterday, 18:04');
+  });
+
+  it('falls back to the date for anything older', () => {
+    assert.equal(formatRelativeDateTime('2026-08-14T02:11:00.000Z', NOW), '14 Aug, 02:11');
+  });
+});
+
+describe('formatDayDivider', () => {
+  const NOW = new Date('2026-08-24T12:00:00.000Z');
+
+  it('heads today\'s messages with TODAY', () => {
+    assert.equal(formatDayDivider('2026-08-24T09:38:00.000Z', NOW), 'TODAY 09:38');
+  });
+
+  it('heads an older thread with its date', () => {
+    assert.equal(formatDayDivider('2026-07-30T14:50:00.000Z', NOW), 'JUL 30 14:50');
   });
 });

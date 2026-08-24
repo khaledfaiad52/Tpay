@@ -15,6 +15,8 @@ export type FormFieldProps = {
   onPress?: () => void;
   autoCapitalize?: 'none' | 'words';
   keyboardType?: 'default' | 'phone-pad';
+  /** Masks what is typed — passwords only. */
+  secureTextEntry?: boolean;
   /** Shown in danger beneath the field. */
   error?: string;
   testID?: string;
@@ -30,6 +32,7 @@ export function FormField({
   onPress,
   autoCapitalize = 'words',
   keyboardType = 'default',
+  secureTextEntry = false,
   error,
   testID,
 }: FormFieldProps) {
@@ -64,6 +67,7 @@ export function FormField({
             autoCapitalize={autoCapitalize}
             autoCorrect={false}
             keyboardType={keyboardType}
+            secureTextEntry={secureTextEntry}
             accessibilityLabel={label}
             testID={testID}
             style={[styles.input, monospaced && styles.mono]}

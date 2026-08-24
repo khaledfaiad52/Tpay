@@ -14,7 +14,19 @@ export {
   rateBetween,
   totalDebit,
 } from './fxService';
-export { mockKycService } from './kycService';
+export {
+  currentKycStatus,
+  mockKycService,
+  resetKyc,
+  setKycStatus,
+  stepsFor,
+  submittedKycDetails,
+} from './kycService';
+export {
+  mockNotificationsService,
+  resetNotifications,
+  unreadCount,
+} from './notificationsService';
 export {
   mockRequestsService,
   resetRequests,
@@ -22,6 +34,13 @@ export {
   titleFor,
 } from './requestsService';
 export { mockSalaryService } from './salaryService';
+export {
+  mockSecurityService,
+  passwordProblem,
+  resetSecurity,
+  unavailableBiometricAuthenticator,
+} from './securityService';
+export { mockSupportService, resetSupport, supportTopics } from './supportService';
 export { filterTransactions, mockTransactionService } from './transactionService';
 export {
   breachedLimit,
@@ -30,8 +49,14 @@ export {
   limitApplies,
   mockTransferService,
   resetTransfers,
+  sendingLimitFor,
 } from './transferService';
-export { mockUserService } from './userService';
+export {
+  isValidUsername,
+  mockUserService,
+  normaliseUsername,
+  resetUser,
+} from './userService';
 export { mockWalletService, totalBalanceOf } from './walletService';
 export {
   adjustBalance,

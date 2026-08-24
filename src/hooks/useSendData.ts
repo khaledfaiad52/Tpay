@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { services, type Recipient } from '@/services';
+import { services, type KycState, type Recipient, type TransferLimit } from '@/services';
 import type { Account, Money } from '@/types';
 import { useAsyncData, type AsyncResult } from './useAsyncData';
 
@@ -9,17 +9,24 @@ export type SendHubData = {
   /** The wallet the flow defaults to paying from. */
   readonly primary: Account;
   readonly recipients: readonly Recipient[];
+  /** Verification state and the ceiling it puts on this user's transfers. */
+  readonly kyc: KycState;
+  readonly limit: TransferLimit;
 };
 
 async function loadSendHub(): Promise<SendHubData> {
-  const [accounts, recipients] = await Promise.all([
+  const [accounts, recipients, kyc, limit] = await Promise.all([
     services.account.listAccounts(),
     services.transfer.listRecipients(),
+    services.kyc.getKycStatus(),
+    services.transfer.getSendingLimit(),
   ]);
   return {
     accounts,
     primary: accounts.find((account) => account.isPrimary) ?? accounts[0],
     recipients,
+    kyc,
+    limit,
   };
 }
 

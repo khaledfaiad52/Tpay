@@ -103,3 +103,47 @@ function parse(iso: string): Date {
   // rendered day stable in every timezone.
   return new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T12:00:00` : iso);
 }
+
+/** "09:41" — 24-hour clock, as the design writes times. */
+export function formatTimeOfDay(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parse(iso));
+}
+
+/**
+ * "Now" · "Today, 09:41" · "Yesterday, 18:04" · "14 Aug, 02:11" — the way the
+ * design labels recent activity and support messages.
+ */
+export function formatRelativeDateTime(iso: string, now: Date = new Date()): string {
+  const at = parse(iso);
+  const time = formatTimeOfDay(iso);
+  const days = calendarDaysBetween(at, now);
+
+  if (days === 0) {
+    const minutes = Math.round((now.getTime() - at.getTime()) / 60_000);
+    if (minutes >= 0 && minutes < 2) return 'Now';
+    return `Today, ${time}`;
+  }
+  if (days === 1) return `Yesterday, ${time}`;
+
+  const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(at);
+  return `${day}, ${time}`;
+}
+
+/** Whole calendar days between two instants, ignoring the time of day. */
+function calendarDaysBetween(earlier: Date, later: Date): number {
+  const a = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  const b = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** "TODAY 09:38" — the divider above a day's messages in a conversation. */
+export function formatDayDivider(iso: string, now: Date = new Date()): string {
+  const days = calendarDaysBetween(parse(iso), now);
+  if (days === 0) return `TODAY ${formatTimeOfDay(iso)}`;
+  if (days === 1) return `YESTERDAY ${formatTimeOfDay(iso)}`;
+  return `${formatShortDate(iso).toUpperCase()} ${formatTimeOfDay(iso)}`;
+}

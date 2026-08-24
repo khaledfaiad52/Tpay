@@ -125,6 +125,37 @@ export const iconPaths = {
     { kind: 'circle', cx: 6.5, cy: 6.5, r: 2.5 },
     { kind: 'circle', cx: 17.5, cy: 17.5, r: 2.5 },
   ],
+  /** Sign-out arrow, for ending a session on this or another device. */
+  'log-out': [
+    { kind: 'path', d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' },
+    { kind: 'path', d: 'm16 17 5-5-5-5' },
+    { kind: 'path', d: 'M21 12H9' },
+  ],
+  /** Closed padlock — password and account protection. */
+  lock: [
+    { kind: 'rect', x: 3, y: 11, width: 18, height: 11, rx: 2 },
+    { kind: 'path', d: 'M7 11V7a5 5 0 0 1 10 0v4' },
+  ],
+  /** Laptop or desktop, for a trusted device that is not a phone. */
+  monitor: [
+    { kind: 'rect', x: 2, y: 3, width: 20, height: 14, rx: 2 },
+    { kind: 'path', d: 'M8 21h8' },
+    { kind: 'path', d: 'M12 17v4' },
+  ],
+  /** Speech bubble — a support conversation. */
+  'message-circle': [
+    { kind: 'path', d: 'M7.9 20A9 9 0 1 0 4 16.1L2 22Z' },
+  ],
+  /** Identity document. */
+  'id-card': [
+    { kind: 'rect', x: 2, y: 5, width: 20, height: 14, rx: 2 },
+    { kind: 'circle', cx: 9, cy: 11, r: 2 },
+    { kind: 'path', d: 'M6 16a3 3 0 0 1 6 0' },
+    { kind: 'path', d: 'M15 10h4' },
+    { kind: 'path', d: 'M15 14h4' },
+  ],
+  /** Dismiss. */
+  x: [{ kind: 'path', d: 'M18 6 6 18' }, { kind: 'path', d: 'm6 6 12 12' }],
   plus: [{ kind: 'path', d: 'M5 12h14' }, { kind: 'path', d: 'M12 5v14' }],
   search: [
     { kind: 'circle', cx: 11, cy: 11, r: 8 },

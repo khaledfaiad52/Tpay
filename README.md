@@ -12,7 +12,7 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 
 ---
 
-## Status — Phase 1 complete
+## Status — Phase 5A complete
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -20,11 +20,12 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | 2 | Wallet, accounts, account details, add money, exchange, transactions | **Done** |
 | 3 | Send Money — recipient → amount → review → confirmation → success | **Done** |
 | 4 | Salary, employer, benefits, documents, requests | **Done** |
-| 5 | Card, profile, KYC, security | Not started |
+| 5A | Identity verification, Profile, Security, Support, notifications | **Done** |
+| 5B | TPay Card — details, freeze, card activity | Not started |
 | 6 | Polish, testing, error/loading/empty states across the app | Not started |
 
-Every screen outside Phases 1–4 exists as a routed placeholder, so navigation
-and back navigation work end to end today.
+TPay Card is the one screen still standing as a routed placeholder, so
+navigation and back navigation work end to end today.
 
 ---
 
@@ -67,8 +68,10 @@ drive a real browser through the app and assert on what is visible; they cover
 Home → Wallet → Account → Account details → Add money → Exchange →
 Transactions → Transaction detail → Send Money (recipient, amount, review,
 processing, success, failure and transfer detail) → Salary, payslips,
-employment, documents, requests and benefits, with back navigation at each
-step and balance assertions after every transfer.
+employment, documents, requests and benefits → Profile, username, Security,
+trusted devices, notifications, Support and identity verification through
+every state, with back navigation at each step and balance assertions after
+every transfer.
 
 Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
@@ -101,21 +104,23 @@ src/
     wallet/         wallet, deposit and exchange sections
     send/           the Send Money flow's state, steps and outcomes
     work/           salary, document and request presentation
+    account/        verification status, steps and demo callbacks
     navigation/     tab bar, screen header, phase placeholder
   services/
     contracts/      provider-agnostic service interfaces
     mock/           the adapter set that backs the app today
     registry.ts     resolves one adapter set for the whole app
   types/            domain model — Money, Transaction, Account, Card, …
-  hooks/            useAsyncData, useHomeData
+  hooks/            useAsyncData and one data hook per screen area
   utils/            money and date formatting
 ```
 
 ### Provider abstraction
 
-The app never imports a financial provider. It consumes eleven services —
+The app never imports a financial provider. It consumes sixteen services —
 `user`, `wallet`, `account`, `transaction`, `transfer`, `fx`, `card`, `kyc`,
-`salary`, `employment`, `benefits` — declared as interfaces in
+`salary`, `employment`, `benefits`, `documents`, `requests`, `security`,
+`support`, `notifications` — declared as interfaces in
 `src/services/contracts` and resolved through `src/services/registry.ts`:
 
 ```ts
@@ -185,11 +190,69 @@ uses. A failure after the account was debited returns the money.
 Until a real provider is connected, the transfer detail screen delivers that
 callback by hand so both outcomes can be exercised.
 
+### Verification governs what can be sent
+
 `transferService.listTransferLimits()` publishes the ceilings that apply. A
 limit names the conditions it holds under — KYC status, country, currency,
 corridor, payout method — so a real limit set can be expressed without
-reshaping the model. The values shipped today are deliberately generous mock
-ones.
+reshaping the model. The values are configurable mock ones, gathered in
+`CEILING_USD` at the top of `src/services/mock/transferService.ts`; nothing
+here is a real provider's number.
+
+Verification level is the dimension that moves today. `quoteTransfer` reads
+the live status from `kycService`, so a limit cannot be bypassed by a stale
+copy on the user record:
+
+| Verification status | Per-transfer ceiling | What the user is offered |
+| --- | --- | --- |
+| `NOT_STARTED` | $500 | Complete identity verification |
+| `IN_PROGRESS` | $1,000 | Complete identity verification |
+| `ACTION_REQUIRED` | $500 | Complete identity verification |
+| `SUBMITTED` | $2,500 | Nothing — the review is running |
+| `VERIFIED` | $25,000 | Nothing |
+| `REJECTED` / `SUSPENDED` | Sending paused | Contact TPay support |
+
+`transferService.getSendingLimit()` returns the ceiling in force, so Send and
+the verification screen can state it *before* the user hits it. When one is
+breached, `TransferLimitExceededError` carries the whole limit — the amount,
+the explanation and the single action that lifts it — so the screen explains
+rather than just refusing.
+
+### Verification, all seven states
+
+`kycService` walks personal information → identity document → review, and
+normalises a provider's outcomes through `handleKycCallback()` exactly as
+transfers do. Every state — `NOT_STARTED`, `IN_PROGRESS`, `SUBMITTED`,
+`ACTION_REQUIRED`, `VERIFIED`, `REJECTED`, `SUSPENDED` — has one presentation,
+in `src/components/account/kycPresentation.ts`, so a status can never be shown
+with the wrong voice. Proof of address is asked for only when a reviewer
+actually wants it.
+
+The verification screen carries a clearly-labelled **demo** row that applies a
+reviewer outcome. It goes through `handleKycCallback()` — the seam a real
+webhook lands on — rather than reaching into the store, and drops out with the
+mock adapter.
+
+### Biometrics are claimed only when they exist
+
+`BiometricAuthenticator` is a separate contract from `SecurityService`,
+because it is answered by the platform rather than by TPay's backend. There is
+no native module yet, so the shipped implementation reports
+`available: false` with a reason, and `authenticate()` rejects. Nothing in the
+app pretends a face was checked. Turning the switch on is recorded as a stored
+preference and the screen says plainly that the device cannot honour it yet.
+
+The transfer confirmation seam (`TransferConfirmation`) already carries
+`method` and an optional attestation `token`, so connecting a native module is
+a service swap, not a flow change.
+
+### One support surface
+
+Employer → Message, Benefit → Get support, Employment → Support and the help
+centre all open the same `supportService`. A conversation carries the topic it
+started from, so support opens with context instead of asking the user where
+they came from. Mock conversations only — there is no live-chat backend, and
+the agent is always *TPay support*, never the employer of record.
 
 ---
 

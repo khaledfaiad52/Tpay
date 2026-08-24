@@ -6,8 +6,11 @@ import type {
   EmploymentService,
   FxService,
   KycService,
+  NotificationsService,
   RequestsService,
   SalaryService,
+  SecurityService,
+  SupportService,
   TransactionService,
   TransferService,
   UserService,
@@ -38,6 +41,9 @@ export type ServiceRegistry = {
   readonly benefits: BenefitsService;
   readonly documents: DocumentsService;
   readonly requests: RequestsService;
+  readonly security: SecurityService;
+  readonly support: SupportService;
+  readonly notifications: NotificationsService;
 };
 
 /** Adapters shipped today. Provider-backed sets get their own key here. */
@@ -58,6 +64,9 @@ const REGISTRIES: Record<ProviderId, ServiceRegistry> = {
     benefits: mock.mockBenefitsService,
     documents: mock.mockDocumentsService,
     requests: mock.mockRequestsService,
+    security: mock.mockSecurityService,
+    support: mock.mockSupportService,
+    notifications: mock.mockNotificationsService,
   },
 };
 

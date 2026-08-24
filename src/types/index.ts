@@ -55,4 +55,29 @@ export type {
   TransactionStatus,
   TransactionType,
 } from './transaction';
-export { formatUsername, type KycStatus, type User } from './user';
+export {
+  formatUsername,
+  type KycStatus,
+  type PostalAddress,
+  type User,
+  type UserPreferences,
+  type UserProfileUpdate,
+} from './user';
+export type { AppNotification, NotificationTarget, NotificationTone } from './notification';
+export type {
+  BiometricCapability,
+  LoginEvent,
+  LoginOutcome,
+  SecuritySettings,
+  TrustedDevice,
+} from './security';
+export type {
+  SupportAgent,
+  SupportAttachment,
+  SupportAuthor,
+  SupportConversation,
+  SupportConversationDraft,
+  SupportConversationStatus,
+  SupportMessage,
+  SupportTopic,
+} from './support';

@@ -69,6 +69,26 @@ export async function runFlows(page, log) {
     await byTestId(id).click({ timeout: 8000 });
   };
 
+  /** Asserts that something is NOT on screen — an affordance a state removes. */
+  const checkMissing = async (name, needle) => {
+    try {
+      await visibleText(needle).waitFor({ state: 'visible', timeout: 1500 });
+      return record(name, false);
+    } catch {
+      return record(name, true);
+    }
+  };
+
+  /** Asserts on the current value of a text field, which carries no text node. */
+  const checkValue = async (name, testId, expected) => {
+    try {
+      const value = await byTestId(testId).inputValue({ timeout: 6000 });
+      return record(name, value.includes(expected));
+    } catch {
+      return record(name, false);
+    }
+  };
+
   const checkUrl = async (name, fragment) => {
     try {
       await page.waitForURL((url) => url.pathname.includes(fragment), { timeout: 6000 });
@@ -96,7 +116,7 @@ export async function runFlows(page, log) {
     ['tab-wallet', 'Wallet', 'TPay Wallet'],
     ['tab-send', 'Send', 'Send money'],
     ['tab-benefits', 'Benefits', 'benefits active through'],
-    ['tab-profile', 'Profile', 'Profile is not built yet'],
+    ['tab-profile', 'Profile', 'Security centre'],
     ['tab-index', 'Home', 'TPAY BALANCE'],
   ]) {
     await tapId(id);
@@ -236,6 +256,19 @@ export async function runFlows(page, log) {
     tapText,
     tapId,
     tapIdNow,
+    back,
+    goHome,
+    byTestId,
+    page,
+  });
+
+  await runAccountFlows({
+    check,
+    checkId,
+    checkMissing,
+    checkValue,
+    tapText,
+    tapId,
     back,
     goHome,
     byTestId,
@@ -527,4 +560,301 @@ async function runSendFlows({
   await check('The detail shows the reference', 'Reference');
   await back();
   await check('Back returns to the success screen', 'Money sent');
+}
+
+/**
+ * Phase 5A — Identity, Profile, Security and Support.
+ *
+ * Walks verification through every state it can reach, checks that the state
+ * really governs what can be sent, and opens the one support surface from each
+ * of the places that should lead to it.
+ */
+async function runAccountFlows({
+  check,
+  checkId,
+  checkMissing,
+  checkValue,
+  tapText,
+  tapId,
+  back,
+  goHome,
+  byTestId,
+  page,
+}) {
+  await goHome();
+  const home = async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (await byTestId('tab-index').count()) break;
+      await back();
+    }
+    await tapId('tab-index');
+  };
+  const profile = async () => {
+    await home();
+    await tapId('tab-profile');
+  };
+
+  // ---- Profile -------------------------------------------------------------
+  await tapId('tab-profile');
+  await check('Profile names the user', 'Khaled Faiad');
+  await check('Profile shows the TPay username', '@khaled');
+  await check('Profile shows verification state', 'Identity verified');
+  await check('Profile groups personal details', 'Personal information');
+  await check('Profile links to work', 'Salary & payslips');
+  await check('Profile links to security', 'Security centre');
+  await check('Profile links to support', 'Help centre');
+  await check('Profile offers a way out', 'Log out');
+
+  await tapId('profile-copy-username');
+  await check('Copying the username confirms', '@khaled copied');
+
+  await tapText('Personal information');
+  await check('Profile → Personal information', 'VERIFIED IDENTITY');
+  await check('It shows the legal name', 'Legal name');
+  await check('It explains what cannot be edited here', 'come from identity verification');
+  await check('It shows the address on file', 'Street address');
+  await byTestId('profile-email').fill('khaled.faiad@demo.tpay.app');
+  await tapId('profile-save');
+  await page.waitForTimeout(1400);
+  await check('Saving contact details confirms', 'Your details were updated');
+
+  await profile();
+  await check('Profile shows the updated email', 'khaled.faiad@demo.tpay.app');
+
+  await tapText('TPay username');
+  await check('Profile → TPay username', 'how other TPay users find you');
+  await byTestId('username-field').fill('khaled_2026');
+  await checkId('The preview follows what is typed', 'username-preview');
+  await tapId('username-check');
+  await page.waitForTimeout(1200);
+  await check('An available handle says so', '@khaled_2026 is available');
+  await tapId('username-save');
+  await page.waitForTimeout(1400);
+  await check('Saving the username confirms', 'You are now @khaled_2026');
+
+  await profile();
+  await check('Profile shows the new handle', '@khaled_2026');
+
+  // ---- Security ------------------------------------------------------------
+  await tapId('profile-security');
+  await check('Profile → Security', 'Your account is protected');
+  await check('Security offers device biometrics', 'Face ID');
+  await check('Security is honest that biometrics are unavailable', 'not connected yet');
+  await check('Security offers two-factor', 'Two-factor authentication');
+  await check('Two-factor names a masked destination', 'SMS to +966');
+  await check('Security lists recent logins', 'RECENT LOGIN ACTIVITY');
+  await check('A blocked attempt is called out', 'Blocked ·');
+  await check('Security offers a freeze', 'Freeze account');
+
+  await tapId('security-biometrics');
+  await page.waitForTimeout(1200);
+  await check('Turning on unavailable biometrics explains itself', 'not connected yet');
+
+  await tapId('security-two-factor');
+  await page.waitForTimeout(1400);
+  await check('Turning two-factor off confirms', 'Two-factor authentication is off');
+  await tapId('security-two-factor');
+  await page.waitForTimeout(1400);
+  await check('Turning it back on confirms', 'Two-factor authentication is on');
+
+  await tapId('security-change-password');
+  await check('Security → Change password', 'Current password');
+  await byTestId('password-current').fill('wrong-password');
+  await byTestId('password-new').fill('riyadh2026spring');
+  await byTestId('password-confirm').fill('riyadh2026spring');
+  await tapId('password-submit');
+  await page.waitForTimeout(1400);
+  await check('A wrong current password is named', "isn't your current password");
+  await byTestId('password-current').fill('demo-password');
+  await tapId('password-submit');
+  await page.waitForTimeout(1600);
+  await check('Changing the password confirms', 'Password updated');
+
+  await tapId('security-devices');
+  await check('Security → Trusted devices', 'signed in to your TPay account');
+  await check('This device is marked', 'Current');
+  await check('Another device is listed', 'MacBook Pro');
+  await tapId('device-sign-out-dev_macbook');
+  await page.waitForTimeout(1600);
+  await check('Signing a device out confirms', 'MacBook Pro signed out');
+  await check('Only this device is left', 'only device signed in');
+  await back();
+
+  await tapId('security-freeze');
+  await page.waitForTimeout(1600);
+  await check('Freezing the account confirms', 'Account frozen');
+  await check('The security summary reflects the freeze', 'Your account is frozen');
+  await tapId('security-freeze');
+  await page.waitForTimeout(1600);
+  await check('Unfreezing confirms', 'Account unfrozen');
+
+  // ---- Notifications -------------------------------------------------------
+  await profile();
+  await tapText('Notifications');
+  await check('Profile → Notifications', 'Salary received');
+  await check('Something needing the user is listed', 'Action required');
+  await check('A completed transfer is listed', 'Transfer completed');
+  await check('Unread notifications can be cleared', 'Mark all read');
+  await tapId('notifications-mark-all');
+  await page.waitForTimeout(1400);
+  await checkMissing('Marking all read removes the affordance', 'Mark all read');
+  await tapId('notification-ntf_salary');
+  await page.waitForTimeout(1400);
+  await check('A notification leads to what it is about', 'NEXT SALARY');
+
+  // ---- Support, from every entry point -------------------------------------
+  await home();
+  await tapId('home-employer');
+  await tapId('employer-message');
+  await check('Employer → Message opens TPay Support', 'Message TPay Support');
+  await checkValue(
+    'It arrives with the employer topic chosen',
+    'support-new-subject',
+    'Message for Layla Nasser',
+  );
+  await back();
+  await tapId('employment-details');
+  await tapId('employment-support');
+  await check('Employment → Support opens the same surface', 'Message TPay Support');
+  await checkValue(
+    'It arrives with the employment subject',
+    'support-new-subject',
+    'Employment details',
+  );
+  await back();
+
+  await home();
+  await tapId('tab-benefits');
+  await tapId('benefit-ben_medical');
+  await tapId('benefit-support');
+  await check('Benefit → Get support opens the same surface', 'Message TPay Support');
+  await checkValue(
+    'It arrives with the benefit as the subject',
+    'support-new-subject',
+    'Medical insurance',
+  );
+  await byTestId('support-new-message').fill('How do I add a dependent to my cover?');
+  await tapId('support-new-submit');
+  await page.waitForTimeout(1800);
+  await check('Starting a conversation opens it', 'TPay support');
+  await check('The message sent is in the thread', 'How do I add a dependent');
+  await check('Support answers with context', 'I can see your benefits');
+
+  await byTestId('conversation-input').fill('Two children, both under ten.');
+  await tapId('conversation-send');
+  await page.waitForTimeout(1800);
+  await check('A reply is added to the thread', 'Two children, both under ten');
+
+  // ---- The support hub -----------------------------------------------------
+  await profile();
+  await tapId('profile-help');
+  await check('Profile → Support hub', 'How can we help?');
+  await check('The hub offers a conversation', 'Chat with TPay');
+  await check('The hub lists existing conversations', 'YOUR CONVERSATIONS');
+  await check('An earlier conversation is listed', 'Transfer to Ahmed Mansour failed');
+  await check('The hub groups by topic', 'BROWSE BY TOPIC');
+  await check('The hub answers common questions', 'When exactly will my salary arrive?');
+  await check('The hub still links to HR requests', 'Create a request for HR');
+
+  await tapId('support-conversation-sup_9021');
+  await check('Hub → a conversation', 'Layla Nasser');
+  await check('The conversation shows what support said', 'nothing left your account');
+  await check('A failed transfer is attached', 'FAILED TRANSFER');
+  await back();
+  await check('back reaches the support hub', 'How can we help?');
+
+  await tapId('support-conversation-sup_8840');
+  await check('A closed conversation is marked closed', 'conversation closed');
+  await check('A closed conversation cannot be replied to', 'Start a new one to continue');
+  await back();
+
+  // ---- Verification: every state, and what each one allows -----------------
+  await profile();
+  await tapId('profile-kyc');
+  await check('Profile → Identity verification', 'Identity verified');
+  await check('Verified accounts see their transfer limit', 'Transfer limit $25,000.00');
+  await checkId('The verification steps are listed', 'kyc-step-personal-information');
+
+  await tapId('kyc-demo-in_review');
+  await page.waitForTimeout(1400);
+  await check('A submission in review says so', 'Verification in review');
+  await check('In review has a smaller ceiling', 'Transfer limit $2,500.00');
+
+  await tapId('kyc-demo-requires_action');
+  await page.waitForTimeout(1400);
+  await check('An action-required review says what it needs', 'recent proof of address');
+  await check('Proof of address becomes a real step', 'Proof of address');
+  await check('Action required restricts the limit', 'Transfer limit $500.00');
+
+  await tapId('kyc-demo-declined');
+  await page.waitForTimeout(1400);
+  await check('A declined verification says so', 'Verification was declined');
+  await check('A declined account cannot send', 'Sending is paused');
+  await check('A declined account is sent to support', 'Contact TPay support');
+
+  await tapId('kyc-demo-suspended');
+  await page.waitForTimeout(1400);
+  await check('A suspended account says so', 'Account under review');
+  await check('A suspended account cannot send', 'Sending is paused');
+
+  // A blocked account must not be able to send anything at all.
+  await home();
+  await tapId('tab-send');
+  await check('Send warns a suspended account up front', 'Account under review');
+  await tapId('recent-recipient-rcp_ahmed');
+  await byTestId('send-amount').fill('10');
+  await page.waitForTimeout(1800);
+  await checkId('A suspended account is stopped at the amount', 'send-limit');
+  await check('The stop explains itself', 'Sending is paused while TPay reviews your account');
+  await check('It offers the only thing that helps', 'Contact TPay support');
+  await checkMissing('Review is unreachable while blocked', 'Review transfer is enabled');
+
+  // ---- Walking verification from the start --------------------------------
+  await home();
+  await tapId('tab-profile');
+  await tapId('profile-kyc');
+  await tapId('kyc-demo-created');
+  await page.waitForTimeout(1400);
+  await check('Restarting verification reopens every step', 'Verification in progress');
+  await check('An unverified account has a restricted limit', 'Transfer limit $1,000.00');
+  await check('It says how to lift the limit', 'Complete identity verification');
+
+  await tapId('kyc-action');
+  await check('Verification → Personal information', 'Legal first name');
+  await byTestId('kyc-first-name').fill('Khaled');
+  await byTestId('kyc-last-name').fill('Faiad');
+  await byTestId('kyc-dob').fill('1993-06-12');
+  await byTestId('kyc-nationality').fill('Lebanese');
+  await byTestId('kyc-address').fill('DEMO 4417 Olaya Street');
+  await byTestId('kyc-city').fill('Riyadh');
+  await byTestId('kyc-country').fill('Saudi Arabia');
+  await tapId('kyc-personal-submit');
+  await page.waitForTimeout(1600);
+  await check('Personal information → Identity document', 'Choose the document you want');
+  await check('It offers a national ID', 'National ID');
+  await tapId('kyc-document-passport');
+  await tapId('kyc-document-capture');
+  await page.waitForTimeout(1600);
+  await check('Capturing the document confirms', 'Passport captured');
+  await check('Capture never names the provider', 'verification partner');
+  await tapId('kyc-document-submit');
+  await page.waitForTimeout(1600);
+  await check('Identity document → Review', 'What we are sending');
+  await tapId('kyc-review-submit');
+  await page.waitForTimeout(1800);
+  await check('Submitting puts verification in review', 'Verification in review');
+  await tapId('kyc-review-done');
+  await page.waitForTimeout(1200);
+
+  // ---- And back to a verified account -------------------------------------
+  await home();
+  await tapId('tab-profile');
+  await tapId('profile-kyc');
+  await tapId('kyc-demo-approved');
+  await page.waitForTimeout(1400);
+  await check('Approval verifies the account', 'Identity verified');
+  await check('A verified account gets the full limit', 'Transfer limit $25,000.00');
+  await home();
+  await tapId('tab-send');
+  await checkMissing('A verified account sees no verification warning', 'Verify your identity');
 }

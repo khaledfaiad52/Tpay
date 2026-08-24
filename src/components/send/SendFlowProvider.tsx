@@ -3,9 +3,11 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 import { parseAmount } from '@/hooks/useExchange';
 import {
   services,
+  TransferLimitExceededError,
   type Recipient,
   type RecipientDraft,
   type RecipientKind,
+  type TransferLimit,
   type TransferQuote,
   type TransferResult,
 } from '@/services';
@@ -23,6 +25,12 @@ export type SendFlowState = {
   sendAmount: Money | undefined;
   quote: TransferQuote | undefined;
   quoteError: string | undefined;
+  /**
+   * The ceiling the amount just broke, when that is why the quote failed.
+   * Carrying the whole limit lets the screen name the amount and the way past
+   * it rather than showing a bare error.
+   */
+  limitBreach: TransferLimit | undefined;
   isQuoting: boolean;
   status: SendFlowStatus;
   result: TransferResult | undefined;
@@ -57,6 +65,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
   const [amountText, setAmountText] = useState('');
   const [quote, setQuote] = useState<TransferQuote>();
   const [quoteError, setQuoteError] = useState<string>();
+  const [limitBreach, setLimitBreach] = useState<TransferLimit>();
   const [isQuoting, setIsQuoting] = useState(false);
   const [status, setStatus] = useState<SendFlowStatus>('editing');
   const [result, setResult] = useState<TransferResult>();
@@ -72,6 +81,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setRecipient(undefined);
     setQuote(undefined);
     setQuoteError(undefined);
+    setLimitBreach(undefined);
     setAmountText('');
     setResult(undefined);
     setSubmitError(undefined);
@@ -98,18 +108,21 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setSourceAccount(account);
     setQuote(undefined);
     setQuoteError(undefined);
+    setLimitBreach(undefined);
   }, []);
 
   const changeAmount = useCallback((value: string) => {
     setAmountText(value);
     setQuote(undefined);
     setQuoteError(undefined);
+    setLimitBreach(undefined);
   }, []);
 
   const refreshQuote = useCallback(async () => {
     if (!recipient || !sourceAccount || !sendAmount) return;
     setIsQuoting(true);
     setQuoteError(undefined);
+    setLimitBreach(undefined);
     try {
       const next = await services.transfer.quoteTransfer({
         recipientId: recipient.id,
@@ -119,6 +132,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       setQuote(next);
     } catch (cause) {
       setQuote(undefined);
+      if (cause instanceof TransferLimitExceededError) setLimitBreach(cause.limit);
       setQuoteError(
         cause instanceof Error ? cause.message : "We couldn't price that transfer.",
       );
@@ -155,6 +169,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setAmountText('');
     setQuote(undefined);
     setQuoteError(undefined);
+    setLimitBreach(undefined);
     setResult(undefined);
     setSubmitError(undefined);
     setStatus('editing');
@@ -169,6 +184,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       sendAmount,
       quote,
       quoteError,
+      limitBreach,
       isQuoting,
       status,
       result,
@@ -190,6 +206,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       sendAmount,
       quote,
       quoteError,
+      limitBreach,
       isQuoting,
       status,
       result,

@@ -173,7 +173,12 @@ export default function BenefitScreen() {
           block
           style={styles.action}
           testID="benefit-support"
-          onPress={() => router.push('/requests/new')}
+          onPress={() =>
+            router.push({
+              pathname: '/support/new',
+              params: { topic: 'benefits', subject: data.name },
+            })
+          }
         />
         <Button
           label="Share details"

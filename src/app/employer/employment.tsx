@@ -1,7 +1,9 @@
+import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { ScreenHeader } from '@/components/navigation';
 import {
+  Button,
   Card,
   DetailRow,
   EmptyState,
@@ -11,7 +13,6 @@ import {
   Screen,
   Skeleton,
   Text,
-  useToast,
 } from '@/components/ui';
 import { useEmploymentData } from '@/hooks';
 import { colors } from '@/theme';
@@ -33,7 +34,6 @@ const TYPE_LABELS: Record<Employment['type'], string> = {
 /** The full contractual picture, grouped the way the approved screen groups it. */
 export default function EmploymentDetailsScreen() {
   const data = useEmploymentData();
-  const { showToast } = useToast();
 
   if (data.status === 'loading') {
     return (
@@ -122,12 +122,20 @@ export default function EmploymentDetailsScreen() {
             />
             <DetailRow label="Employer of record" value={employment.legalEmployer ?? '—'} />
           </Card>
-          <Text
-            variant="captionSm"
-            color={colors.inkFaint}
-            style={styles.footnote}
-            onPress={() => showToast('Support chat arrives with Profile in the next phase')}
-          >
+          <Button
+            label="Support"
+            variant="secondary"
+            block
+            testID="employment-support"
+            style={styles.support}
+            onPress={() =>
+              router.push({
+                pathname: '/support/new',
+                params: { topic: 'employment', subject: 'Employment details' },
+              })
+            }
+          />
+          <Text variant="captionSm" color={colors.inkFaint} style={styles.footnote}>
             Talento is your employer of record. TPay is where you get paid.
           </Text>
         </>
@@ -138,5 +146,6 @@ export default function EmploymentDetailsScreen() {
 
 const styles = StyleSheet.create({
   content: { gap: 12 },
+  support: { borderRadius: 16, paddingVertical: 15, marginTop: 4 },
   footnote: { textAlign: 'center', lineHeight: 16, marginTop: 4 },
 });

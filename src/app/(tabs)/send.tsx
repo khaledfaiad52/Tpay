@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { KycStatusCard, presentKyc } from '@/components/account';
 import {
   RecentRecipients,
   SendMethodRow,
@@ -96,7 +97,7 @@ export default function SendScreen() {
     );
   }
 
-  const { primary, recipients } = hub.data;
+  const { primary, recipients, kyc, limit } = hub.data;
 
   return (
     <Screen contentStyle={styles.content}>
@@ -106,6 +107,20 @@ export default function SendScreen() {
           {`From your TPay balance · ${formatMoney(primary.balance)} available`}
         </Text>
       </View>
+
+      {kyc.status === 'VERIFIED' ? null : (
+        <KycStatusCard
+          presentation={{
+            ...presentKyc(kyc),
+            detail:
+              limit.max.minorUnits === 0
+                ? 'Sending is paused while TPay reviews your account.'
+                : `Your current verification level has a transfer limit of ${formatMoney(limit.max)} per transfer.`,
+          }}
+          onPress={() => router.push('/kyc')}
+          testID="send-kyc-limit"
+        />
+      )}
 
       <FadeInUp>
         <View style={styles.methods}>

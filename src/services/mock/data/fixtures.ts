@@ -10,30 +10,52 @@ import { fromMajor } from '@/types';
 import { formatMoney } from '@/utils';
 import type {
   Account,
+  AppNotification,
   AccountDetails,
   Benefit,
   Card,
   EmployeeDocument,
   EmployeeRequest,
   Employment,
+  LoginEvent,
   Payslip,
   SalaryRecord,
+  SecuritySettings,
+  SupportAgent,
+  SupportConversation,
+  TrustedDevice,
   Transaction,
   UpcomingSalary,
   User,
 } from '@/types';
+import type { SupportArticle } from '@/services/contracts';
 
 export const mockUser: User = {
   id: 'usr_demo_khaled',
   firstName: 'Khaled',
   lastName: 'Faiad',
   username: 'khaled',
-  email: 'khaled@demo.tpay.app',
-  phone: '+966 5• ••• ••21',
+  email: 'khaled.faiad@demo.acme.sa',
+  phone: '+966 55 ••• 4402',
   initials: 'KF',
   country: 'Saudi Arabia',
   kycStatus: 'VERIFIED',
   walletActivated: true,
+  dateOfBirth: '1993-06-12',
+  nationality: 'Lebanese',
+  address: {
+    line1: 'DEMO 4417 Olaya Street',
+    line2: 'Apartment 12',
+    city: 'Riyadh',
+    region: 'Riyadh Province',
+    postalCode: '12244',
+    country: 'Saudi Arabia',
+  },
+  preferences: {
+    language: 'en',
+    languageLabel: 'English',
+    defaultCurrency: 'USD',
+  },
 };
 
 export const mockAccounts: readonly Account[] = [
@@ -628,5 +650,208 @@ export const mockRequests: readonly EmployeeRequest[] = [
     completedAt: '2026-07-28T10:00:00.000Z',
     amount: fromMajor(240, 'USD'),
     note: 'Paid 28 Jul',
+  },
+];
+
+export const mockSecuritySettings: SecuritySettings = {
+  // Nothing here claims a protection the device has actually performed — these
+  // are the user's stored choices.
+  biometricsEnabled: false,
+  twoFactorEnabled: true,
+  twoFactorDestination: '+966 •• 4402',
+  passwordUpdatedAt: '2026-05-02',
+  accountFrozen: false,
+};
+
+export const mockDevices: readonly TrustedDevice[] = [
+  {
+    id: 'dev_iphone',
+    name: 'iPhone 15 Pro',
+    location: 'Riyadh, Saudi Arabia',
+    lastSeenAt: '2026-08-24T09:41:00.000Z',
+    isCurrent: true,
+    trusted: true,
+  },
+  {
+    id: 'dev_macbook',
+    name: 'MacBook Pro',
+    location: 'Riyadh, Saudi Arabia',
+    lastSeenAt: '2026-08-23T18:04:00.000Z',
+    isCurrent: false,
+    trusted: true,
+  },
+];
+
+export const mockLoginActivity: readonly LoginEvent[] = [
+  {
+    id: 'login_1',
+    deviceName: 'iPhone 15 Pro',
+    location: 'Riyadh',
+    occurredAt: '2026-08-24T09:41:00.000Z',
+    outcome: 'success',
+  },
+  {
+    id: 'login_2',
+    deviceName: 'MacBook Pro',
+    location: 'Riyadh',
+    occurredAt: '2026-08-23T18:04:00.000Z',
+    outcome: 'success',
+  },
+  {
+    id: 'login_3',
+    deviceName: 'Unknown device',
+    location: 'Cairo',
+    occurredAt: '2026-08-14T02:11:00.000Z',
+    outcome: 'blocked',
+  },
+];
+
+export const mockSupportAgent: SupportAgent = {
+  name: 'Layla Nasser',
+  initials: 'LN',
+  role: 'TPay support',
+  online: true,
+};
+
+export const mockConversations: readonly SupportConversation[] = [
+  {
+    id: 'sup_9021',
+    subject: 'Transfer to Ahmed Mansour failed',
+    topic: 'transfers',
+    status: 'open',
+    agent: mockSupportAgent,
+    updatedAt: '2026-08-24T09:44:00.000Z',
+    unread: true,
+    messages: [
+      {
+        id: 'msg_1',
+        author: 'agent',
+        body: "Good morning Khaled. I'm Layla from TPay support. How can I help today?",
+        sentAt: '2026-08-24T09:38:00.000Z',
+      },
+      {
+        id: 'msg_2',
+        author: 'you',
+        body: 'Hi Layla — my transfer to Ahmed failed this morning. Was the money taken?',
+        sentAt: '2026-08-24T09:41:00.000Z',
+      },
+      {
+        id: 'msg_3',
+        author: 'agent',
+        body:
+          'No — nothing left your account. The recipient details were rejected by the receiving bank. ' +
+          "If you can confirm the last 6 digits I'll fix the beneficiary for you.",
+        sentAt: '2026-08-24T09:44:00.000Z',
+        attachment: {
+          label: 'FAILED TRANSFER',
+          title: '$852.50 to Ahmed Mansour',
+          kind: 'transfer',
+          targetId: 'trf_demo_failed',
+        },
+      },
+    ],
+  },
+  {
+    id: 'sup_8840',
+    subject: 'Medical insurance claim',
+    topic: 'benefits',
+    status: 'closed',
+    agent: mockSupportAgent,
+    updatedAt: '2026-07-30T15:20:00.000Z',
+    unread: false,
+    messages: [
+      {
+        id: 'msg_4',
+        author: 'you',
+        body: 'How do I claim for a dental appointment?',
+        sentAt: '2026-07-30T14:50:00.000Z',
+      },
+      {
+        id: 'msg_5',
+        author: 'agent',
+        body:
+          'Dental is included on your plan. Pay at a network clinic with your insurance card and the ' +
+          'claim is settled directly — no forms needed.',
+        sentAt: '2026-07-30T15:20:00.000Z',
+      },
+    ],
+  },
+];
+
+/** The questions people actually open support for. */
+export const mockArticles: readonly SupportArticle[] = [
+  {
+    id: 'art_salary_timing',
+    question: 'When exactly will my salary arrive?',
+    answer:
+      'Your employer releases payroll on the last working day of the month. Once released, salary ' +
+      'reaches your TPay wallet the same day — usually within a few hours.',
+    topic: 'salary',
+  },
+  {
+    id: 'art_transfer_speed',
+    question: 'How long do international transfers take?',
+    answer:
+      'Transfers to another TPay user arrive instantly. Bank payouts take one to two business days, ' +
+      'and mobile wallets usually land within minutes.',
+    topic: 'transfers',
+  },
+  {
+    id: 'art_medical_claim',
+    question: 'How do I claim on my medical insurance?',
+    answer:
+      'Show your insurance card at any network clinic and the claim is settled directly. For anything ' +
+      'outside the network, start a support conversation and we will guide you through it.',
+    topic: 'benefits',
+  },
+  {
+    id: 'art_limits',
+    question: 'Why is there a limit on my transfers?',
+    answer:
+      'Transfer limits depend on your verification level. Completing identity verification raises them.',
+    topic: 'account',
+  },
+];
+
+export const mockNotifications: readonly AppNotification[] = [
+  {
+    id: 'ntf_salary',
+    title: 'Salary received',
+    body: 'Your July salary of $4,500.00 has been credited to your USD account.',
+    occurredAt: '2026-07-31T08:02:00.000Z',
+    tone: 'salary',
+    icon: 'banknote',
+    read: false,
+    target: { kind: 'salary' },
+  },
+  {
+    id: 'ntf_action',
+    title: 'Action required',
+    body: 'Your expense claim needs a receipt to continue.',
+    occurredAt: '2026-08-23T16:40:00.000Z',
+    tone: 'action',
+    icon: 'alert-triangle',
+    read: false,
+    target: { kind: 'requests' },
+  },
+  {
+    id: 'ntf_transfer',
+    title: 'Transfer completed',
+    body: 'Your transfer of AED 3,121.63 to Ahmed Mansour was completed.',
+    occurredAt: '2026-08-18T14:24:00.000Z',
+    tone: 'neutral',
+    icon: 'arrow-up-right',
+    read: true,
+    target: { kind: 'transaction', id: 'txn_1002' },
+  },
+  {
+    id: 'ntf_benefit',
+    title: 'New benefit available',
+    body: 'Dental and optical cover was added to your medical plan.',
+    occurredAt: '2026-08-12T10:00:00.000Z',
+    tone: 'neutral',
+    icon: 'shield-check',
+    read: true,
+    target: { kind: 'benefit', id: 'ben_medical' },
   },
 ];

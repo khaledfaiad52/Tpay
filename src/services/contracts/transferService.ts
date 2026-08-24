@@ -128,9 +128,11 @@ export type Transfer = {
 };
 
 /**
- * How the user proved it was them. Phase 5 fills this in with device
- * biometrics; today every transfer is confirmed by tapping Confirm, and the
- * field records that plainly rather than leaving it unsaid.
+ * How the user proved it was them.
+ *
+ * `BiometricAuthenticator` fills this in with a device attestation once a
+ * native module can supply one. Today every transfer is confirmed by tapping
+ * Confirm, and the field records that plainly rather than leaving it unsaid.
  */
 export type TransferConfirmation = {
   readonly method: 'tap' | 'biometric' | 'passcode';
@@ -194,6 +196,11 @@ export type TransferService = {
   handleTransferCallback(payload: TransferCallbackPayload): Promise<Transfer>;
   /** The limits that apply to this user today. */
   listTransferLimits(): Promise<readonly TransferLimit[]>;
+  /**
+   * The per-transaction ceiling the user is sending under right now, given
+   * their verification level. A screen shows this before the user hits it.
+   */
+  getSendingLimit(): Promise<TransferLimit>;
 };
 
 /**
@@ -202,8 +209,8 @@ export type TransferService = {
  * conditions it applies under rather than assuming one dimension.
  */
 export type TransferLimitScope = {
-  /** Applies only at or below this verification level. */
-  readonly kycStatus?: KycStatus;
+  /** Applies only at these verification levels. */
+  readonly kycStatus?: KycStatus | readonly KycStatus[];
   /** Recipient country. */
   readonly country?: string;
   /** Source currency. */
@@ -223,4 +230,16 @@ export type TransferLimit = {
   readonly period: TransferLimitPeriod;
   /** Always in the limit's own currency; compared after conversion. */
   readonly max: Money;
+  /** Why this ceiling applies right now, in the user's words. */
+  readonly explanation?: string;
+  /** What lifts it, when anything does. */
+  readonly action?: TransferLimitAction;
 };
+
+/**
+ * The one thing the user can do about a limit. Screens turn this into a
+ * button, so a new remedy is a new variant here rather than a new screen.
+ */
+export type TransferLimitAction =
+  | { readonly kind: 'verify-identity'; readonly label: string }
+  | { readonly kind: 'contact-support'; readonly label: string };

@@ -18,6 +18,7 @@ export type ListRowProps = {
   /** Hairline under the row, for rows grouped inside one card. */
   divided?: boolean;
   style?: ViewStyle;
+  testID?: string;
 };
 
 /** Icon · title/subtitle · trailing — the repeating unit of the whole app. */
@@ -30,6 +31,7 @@ export function ListRow({
   onPress,
   divided = false,
   style,
+  testID,
 }: ListRowProps) {
   const content = (
     <>
@@ -51,9 +53,15 @@ export function ListRow({
 
   const rowStyle = StyleSheet.flatten([styles.row, divided && styles.divided, style]) as ViewStyle;
 
-  if (!onPress) return <View style={rowStyle}>{content}</View>;
+  if (!onPress) {
+    return (
+      <View style={rowStyle} testID={testID}>
+        {content}
+      </View>
+    );
+  }
   return (
-    <Tappable accessibilityRole="button" onPress={onPress} style={rowStyle}>
+    <Tappable accessibilityRole="button" onPress={onPress} style={rowStyle} testID={testID}>
       {content}
     </Tappable>
   );

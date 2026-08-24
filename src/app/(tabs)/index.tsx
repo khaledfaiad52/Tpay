@@ -84,7 +84,7 @@ export default function HomeScreen() {
         greeting={greeting()}
         firstName={data.user.firstName}
         initials={data.user.initials}
-        hasUnreadNotifications
+        hasUnreadNotifications={data.unreadNotifications > 0}
         onNotificationsPress={() => router.push('/notifications')}
         onProfilePress={() => router.push('/profile')}
       />

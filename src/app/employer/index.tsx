@@ -15,7 +15,6 @@ import {
   StatusPill,
   Tappable,
   Text,
-  useToast,
 } from '@/components/ui';
 import { useEmploymentData, useRefreshOnFocus } from '@/hooks';
 import { colors, radius } from '@/theme';
@@ -40,7 +39,6 @@ const TYPE_LABELS: Record<Employment['type'], string> = {
 export default function EmployerScreen() {
   const data = useEmploymentData();
   useRefreshOnFocus(data.reload);
-  const { showToast } = useToast();
 
   if (data.status === 'loading') {
     return (
@@ -141,7 +139,12 @@ export default function EmployerScreen() {
           <Tappable
             accessibilityRole="button"
             testID="employer-message"
-            onPress={() => showToast('Support chat arrives with Profile in the next phase')}
+            onPress={() =>
+              router.push({
+                pathname: '/support/new',
+                params: { topic: 'employer', subject: `Message for ${accountManager.name}` },
+              })
+            }
             style={styles.messageChip}
           >
             <Text variant="action" color={colors.primary}>

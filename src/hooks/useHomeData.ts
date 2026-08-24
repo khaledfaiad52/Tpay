@@ -1,4 +1,4 @@
-import { services } from '@/services';
+import { services, unreadCount } from '@/services';
 import type {
   Account,
   BenefitsSummary,
@@ -23,6 +23,8 @@ export type HomeData = {
   readonly card: Card | null;
   readonly employment: Employment | null;
   readonly benefits: BenefitsSummary;
+  /** Drives the dot on the bell. */
+  readonly unreadNotifications: number;
 };
 
 /**
@@ -30,15 +32,17 @@ export type HomeData = {
  * so the screen has a single loading state and a single failure boundary.
  */
 async function loadHomeData(): Promise<HomeData> {
-  const [user, wallet, nextSalary, transactions, card, employment, benefits] = await Promise.all([
-    services.user.getCurrentUser(),
-    services.wallet.getBalance(),
-    services.salary.getNextSalary(),
-    services.transaction.listTransactions({ limit: RECENT_TRANSACTION_COUNT }),
-    services.card.getCard(),
-    services.employment.getEmployment(),
-    services.benefits.getSummary(),
-  ]);
+  const [user, wallet, nextSalary, transactions, card, employment, benefits, notifications] =
+    await Promise.all([
+      services.user.getCurrentUser(),
+      services.wallet.getBalance(),
+      services.salary.getNextSalary(),
+      services.transaction.listTransactions({ limit: RECENT_TRANSACTION_COUNT }),
+      services.card.getCard(),
+      services.employment.getEmployment(),
+      services.benefits.getSummary(),
+      services.notifications.listNotifications(),
+    ]);
 
   return {
     user,
@@ -49,6 +53,7 @@ async function loadHomeData(): Promise<HomeData> {
     card,
     employment,
     benefits,
+    unreadNotifications: unreadCount(notifications),
   };
 }
 

@@ -1,6 +1,8 @@
 export {
+  BiometricUnavailableError,
   InsufficientFundsError,
   NotFoundError,
+  PasswordRejectedError,
   QuoteExpiredError,
   TransferLimitExceededError,
   UnsupportedCorridorError,
@@ -23,11 +25,28 @@ export type {
 } from './fxService';
 export type {
   KycCallbackPayload,
+  KycDocumentSubmission,
+  KycPersonalDetails,
   KycService,
   KycSession,
   KycState,
+  KycStep,
+  KycStepId,
+  KycStepStatus,
 } from './kycService';
+export type { NotificationsService } from './notificationsService';
 export type { RequestsService } from './requestsService';
+export type {
+  BiometricAuthenticator,
+  PasswordChange,
+  PasswordProblem,
+  SecurityService,
+} from './securityService';
+export type {
+  SupportArticle,
+  SupportService,
+  SupportTopicSummary,
+} from './supportService';
 export type { SalaryService } from './salaryService';
 export type {
   TransactionPage,
@@ -43,6 +62,7 @@ export type {
   TransferCallbackPayload,
   TransferConfirmation,
   TransferLimit,
+  TransferLimitAction,
   TransferLimitPeriod,
   TransferLimitScope,
   TransferQuote,

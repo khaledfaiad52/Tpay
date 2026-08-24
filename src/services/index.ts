@@ -17,8 +17,17 @@ export { totalBalanceOf, totalDebit } from './mock';
 export {
   configureMockBehaviour,
   DocumentUnavailableError,
+  isValidUsername,
   MockServiceError,
+  normaliseUsername,
+  resetKyc,
+  resetNotifications,
   resetRequests,
+  resetSecurity,
   resetStore,
+  resetSupport,
   resetTransfers,
+  resetUser,
+  unavailableBiometricAuthenticator,
+  unreadCount,
 } from './mock';
