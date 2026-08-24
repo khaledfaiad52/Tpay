@@ -6,6 +6,21 @@ import type {
   SignupState,
 } from '@/types';
 
+/**
+ * Where a session survives between launches.
+ *
+ * A port, not an implementation: the adapter depends on this interface so it
+ * stays free of platform modules, and the app supplies the device keychain at
+ * start-up. See `src/services/device/secureStorage.ts`.
+ */
+export type SessionStorage = {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+  /** False when nothing is really persisted (the web build). */
+  readonly persists: boolean;
+};
+
 export type Credentials = {
   /** Email or phone — the user types whichever they remember. */
   readonly identifier: string;
@@ -13,6 +28,17 @@ export type Credentials = {
   /** Keep the session on this device after the app closes. */
   readonly rememberDevice?: boolean;
 };
+
+/**
+ * What signing in produced.
+ *
+ * Correct credentials do not always mean a session. With two-factor on, an
+ * unrecognised device gets a challenge instead — so `signIn` answers with one
+ * of these rather than assuming it is done.
+ */
+export type SignInOutcome =
+  | { readonly kind: 'session'; readonly state: SessionState }
+  | { readonly kind: 'otp-required'; readonly challenge: OtpChallenge };
 
 export type SignupDraft = {
   readonly firstName: string;
@@ -38,8 +64,24 @@ export type SessionService = {
   restoreSession(): Promise<SessionState>;
   /** The current state without touching storage. */
   getSessionState(): Promise<SessionState>;
-  /** Rejects with `InvalidCredentialsError` or `TooManyAttemptsError`. */
-  signIn(credentials: Credentials): Promise<SessionState>;
+  /**
+   * Exchanges the refresh token for a new access token, rotating the refresh
+   * token as it goes.
+   *
+   * Resolves to SESSION_EXPIRED when the refresh token has itself run out —
+   * that is the point at which the user must sign in again.
+   */
+  refreshSession(): Promise<SessionState>;
+  /**
+   * Rejects with `InvalidCredentialsError` or `TooManyAttemptsError`.
+   *
+   * Resolves to `otp-required` when two-factor is on and this device is not
+   * one the account has signed in from before. A device the user already
+   * trusts is not challenged again.
+   */
+  signIn(credentials: Credentials): Promise<SignInOutcome>;
+  /** Completes a two-factor sign-in with the code from `signIn`. */
+  verifySignInChallenge(challengeId: string, code: string): Promise<SessionState>;
   /**
    * Exchanges a device attestation for a session. The attestation comes from
    * `BiometricAuthenticator`; this service never prompts for a face itself.
@@ -76,6 +118,12 @@ export type SessionService = {
    * after an explicit sign-out — that is the user asking to be forgotten.
    */
   isBiometricUnlockAvailable(): Promise<boolean>;
+
+  /**
+   * Where the session is kept between launches. Called once at start-up.
+   * Without it the adapter keeps the session in memory only.
+   */
+  useStorage(storage: SessionStorage): void;
 
   /**
    * Ends the session as though its token had run out. Exists because a real

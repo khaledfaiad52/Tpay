@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 import { parseAmount } from '@/hooks/useExchange';
 import {
   AccountRestrictedError,
+  newIdempotencyKey,
   services,
   TransferLimitExceededError,
   type AccountRestriction,
@@ -13,6 +14,7 @@ import {
   type TransferQuote,
   type TransferResult,
 } from '@/services';
+import { resolveConfirmation } from '@/services/device';
 import type { Account, Money } from '@/types';
 
 export type SendFlowStatus = 'editing' | 'submitting' | 'done';
@@ -71,6 +73,12 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
   const [quoteError, setQuoteError] = useState<string>();
   const [limitBreach, setLimitBreach] = useState<TransferLimit>();
   const [restriction, setRestriction] = useState<AccountRestriction>();
+  /**
+   * The key for this transfer intent. Minted once when the user first
+   * confirms and reused for every retry, so a failed attempt that actually
+   * went through can never send the money twice.
+   */
+  const [idempotencyKey, setIdempotencyKey] = useState<string>();
   const [isQuoting, setIsQuoting] = useState(false);
   const [status, setStatus] = useState<SendFlowStatus>('editing');
   const [result, setResult] = useState<TransferResult>();
@@ -88,6 +96,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuoteError(undefined);
     setLimitBreach(undefined);
     setRestriction(undefined);
+    setIdempotencyKey(undefined);
     setAmountText('');
     setResult(undefined);
     setSubmitError(undefined);
@@ -116,6 +125,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuoteError(undefined);
     setLimitBreach(undefined);
     setRestriction(undefined);
+    setIdempotencyKey(undefined);
   }, []);
 
   const changeAmount = useCallback((value: string) => {
@@ -124,6 +134,8 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuoteError(undefined);
     setLimitBreach(undefined);
     setRestriction(undefined);
+    // A changed amount is a different intent, so the old key must not carry.
+    setIdempotencyKey(undefined);
   }, []);
 
   const refreshQuote = useCallback(async () => {
@@ -156,9 +168,22 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
       if (!quote) return;
       setStatus('submitting');
       setSubmitError(undefined);
+      // Reuse the key if this is a retry of the same intent; mint one if not.
+      const key = idempotencyKey ?? newIdempotencyKey('trf');
+      setIdempotencyKey(key);
       try {
+        // Optional by design: this is a face check when the user has turned
+        // one on and the device can do it, and the existing tap otherwise.
+        const settings = await services.security.getSettings();
+        const confirmation = await resolveConfirmation(
+          'Confirm this transfer',
+          settings.biometricsEnabled,
+        );
+
         const next = await services.transfer.createTransfer({
+          idempotencyKey: key,
           quoteId: quote.id,
+          confirmation,
           demoOutcome: options?.demoFailure ? 'failure' : undefined,
         });
         setResult(next);
@@ -171,7 +196,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
         setStatus('done');
       }
     },
-    [quote],
+    [quote, idempotencyKey],
   );
 
   const reset = useCallback(() => {
@@ -182,6 +207,7 @@ export function SendFlowProvider({ children }: { children: React.ReactNode }) {
     setQuoteError(undefined);
     setLimitBreach(undefined);
     setRestriction(undefined);
+    setIdempotencyKey(undefined);
     setResult(undefined);
     setSubmitError(undefined);
     setStatus('editing');

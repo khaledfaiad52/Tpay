@@ -7,6 +7,7 @@ import type {
   FxService,
   KycService,
   NotificationsService,
+  ProviderEventService,
   RequestsService,
   SalaryService,
   SecurityService,
@@ -46,6 +47,12 @@ export type ServiceRegistry = {
   readonly support: SupportService;
   readonly notifications: NotificationsService;
   readonly session: SessionService;
+  /**
+   * Where provider webhooks land once a server has verified and normalised
+   * them. Not something a screen calls: it is the inbound half of the same
+   * boundary the other services sit on.
+   */
+  readonly providerEvents: ProviderEventService;
 };
 
 /**
@@ -78,6 +85,7 @@ const REGISTRIES: Record<ProviderId, ServiceRegistry> = {
     support: mock.mockSupportService,
     notifications: mock.mockNotificationsService,
     session: mock.mockSessionService,
+    providerEvents: mock.mockProviderEventService,
   },
 };
 

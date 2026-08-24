@@ -12,12 +12,14 @@ import {
   totalDebit,
 } from './fxService';
 import { totalBalanceOf } from './walletService';
+import { resetIdempotency } from './idempotency';
 import { configureMockBehaviour } from './latency';
 
 // Run the mock layer without artificial latency inside unit tests.
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
 
 beforeEach(() => {
+  resetIdempotency();
   resetStore();
 });
 

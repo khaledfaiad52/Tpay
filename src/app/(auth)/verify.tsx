@@ -40,9 +40,13 @@ export default function VerifyScreen() {
   const [now, setNow] = useState(() => Date.now());
 
   const isReset = params.flow === 'reset';
+  const isLogin = params.flow === 'login';
 
   useEffect(() => {
     let cancelled = false;
+    // A login or reset challenge is not part of a signup, so there is no
+    // signup state to read for those.
+    if (isReset || isLogin) return;
     services.session.getSignupState().then((state) => {
       if (cancelled || !state) return;
       setStage(state.stage);
@@ -51,7 +55,7 @@ export default function VerifyScreen() {
     return () => {
       cancelled = true;
     };
-  }, [params.challengeId]);
+  }, [params.challengeId, isReset, isLogin]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -63,7 +67,11 @@ export default function VerifyScreen() {
     ? Math.max(0, Math.ceil((Date.parse(challenge.resendAvailableAt) - now) / 1000))
     : 0;
   const copy = STAGE_COPY[stage] ?? { title: 'Verify your identity', step: 2 };
-  const title = isReset ? 'Check your email' : copy.title;
+  const title = isReset
+    ? 'Check your email'
+    : isLogin
+      ? 'Confirm it is you'
+      : copy.title;
 
   const submit = useCallback(async () => {
     if (challengeId === '') return;
@@ -71,6 +79,13 @@ export default function VerifyScreen() {
     setError(undefined);
     setExpired(false);
     try {
+      if (isLogin) {
+        // Two-factor on a device the account has not signed in from before.
+        await session.verifySignInChallenge(challengeId, code);
+        // The guard takes it from here.
+        return;
+      }
+
       if (isReset) {
         // The reset flow needs the code and the new password together, so it
         // carries the verified code on to the next screen rather than
@@ -107,7 +122,7 @@ export default function VerifyScreen() {
     } finally {
       setBusy(false);
     }
-  }, [challengeId, code, isReset, session]);
+  }, [challengeId, code, isReset, isLogin, session]);
 
   const resend = async () => {
     setBusy(true);
@@ -137,11 +152,15 @@ export default function VerifyScreen() {
         >
           <Icon name="arrow-left" size={18} color={colors.ink} />
         </Tappable>
-        {isReset ? <View style={styles.spacer} /> : <StepRail step={copy.step} totalSteps={TOTAL_STEPS} />}
+        {isReset || isLogin ? (
+          <View style={styles.spacer} />
+        ) : (
+          <StepRail step={copy.step} totalSteps={TOTAL_STEPS} />
+        )}
       </View>
 
       <View style={styles.headline}>
-        {isReset ? null : (
+        {isReset || isLogin ? null : (
           <Text variant="eyebrowSm" color={colors.primary}>
             STEP {copy.step} OF {TOTAL_STEPS}
           </Text>
@@ -152,7 +171,9 @@ export default function VerifyScreen() {
         <Text variant="rowBody" color={colors.inkMuted} numeric>
           {challenge
             ? `We sent a ${length}-digit code to ${challenge.destination}`
-            : 'Enter the code we sent you.'}
+            : isLogin
+              ? 'Two-factor authentication is on for this account. Enter the code we sent you.'
+              : 'Enter the code we sent you.'}
         </Text>
       </View>
 

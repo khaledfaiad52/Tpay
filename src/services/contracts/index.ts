@@ -2,24 +2,41 @@ export {
   AccountRestrictedError,
   BiometricUnavailableError,
   CardDeclinedError,
+  DomainError,
+  DuplicateOperationError,
+  hasCode,
+  InsufficientFundsError,
   InvalidCredentialsError,
+  isDomainError,
+  isOutcomeUnknown,
+  KycRequiredError,
   NetworkError,
+  NotFoundError,
   OtpExpiredError,
   OtpInvalidError,
-  SessionExpiredError,
-  TooManyAttemptsError,
-  InsufficientFundsError,
-  NotFoundError,
   PasswordRejectedError,
+  ProviderUnavailableError,
   QuoteExpiredError,
+  SessionExpiredError,
+  TimeoutError,
+  TooManyAttemptsError,
   TransferLimitExceededError,
   UnsupportedCorridorError,
 } from './errors';
+export type { DomainErrorCode } from './errors';
+export { newIdempotencyKey } from './idempotency';
+export type {
+  IdempotencyKey,
+  IdempotencyRecord,
+  IdempotentOutcome,
+  IdempotentRequest,
+} from './idempotency';
 export type { CardDeclineCode } from './errors';
 export type { AccountService } from './accountService';
 export type { BenefitsService } from './benefitsService';
 export type {
   CardAuthorization,
+  CardCallbackPayload,
   CardControlsUpdate,
   CardLimitsUpdate,
   CardPurchaseRequest,
@@ -50,6 +67,13 @@ export type {
   KycStepStatus,
 } from './kycService';
 export type { NotificationsService } from './notificationsService';
+export type {
+  ProviderDomain,
+  ProviderEventEnvelope,
+  ProviderEventOutcome,
+  ProviderEventService,
+  ProviderEventSkipReason,
+} from './providerEvents';
 export type { RequestsService } from './requestsService';
 export { meetsRequirement } from './securityService';
 export type {
@@ -71,7 +95,13 @@ export type {
   SupportTopicSummary,
 } from './supportService';
 export type { SalaryService } from './salaryService';
-export type { Credentials, SessionService, SignupDraft } from './sessionService';
+export type {
+  Credentials,
+  SessionService,
+  SessionStorage,
+  SignInOutcome,
+  SignupDraft,
+} from './sessionService';
 export type {
   TransactionPage,
   TransactionQuery,

@@ -4,9 +4,18 @@ import type {
   ExchangeResult,
   FxService,
 } from '@/services/contracts';
-import { minorUnitFactor, type CurrencyCode, type Money, type Transaction } from '@/types';
+import {
+  addMoney,
+  convertMoney,
+  multiplyMoney,
+  negate,
+  type CurrencyCode,
+  type Money,
+  type Transaction,
+} from '@/types';
 import { InsufficientFundsError, QuoteExpiredError } from '@/services/contracts';
 import { accountRestrictionError } from './accountGuard';
+import { runOnce } from './idempotency';
 import { adjustBalance, findAccount, recordTransactions } from './data/store';
 import { respond } from './latency';
 
@@ -31,12 +40,14 @@ export function rateBetween(from: CurrencyCode, to: CurrencyCode): number {
 }
 
 /**
- * Converts an amount at a given rate, rounding once at the end so a quote and
- * its execution can never disagree.
+ * Converts an amount at a given rate.
+ *
+ * Delegates to the one money helper, which rounds exactly once. It used to
+ * divide into major units, multiply, then round back — two float steps and
+ * two chances to disagree with the quote.
  */
 export function convert(amount: Money, to: CurrencyCode, rate: number): Money {
-  const major = (amount.minorUnits / minorUnitFactor(amount.currency)) * rate;
-  return { minorUnits: Math.round(major * minorUnitFactor(to)), currency: to };
+  return convertMoney(amount, to, rate);
 }
 
 /** Quotes issued this session, so `executeExchange` can settle against them. */
@@ -54,10 +65,8 @@ export function buildExchangeQuote(request: ExchangeQuoteRequest, now = Date.now
   if (!source || !target) throw new Error('Unknown account in exchange quote');
 
   const rate = rateBetween(source.currency, target.currency);
-  const fee: Money = {
-    minorUnits: Math.round(request.sendAmount.minorUnits * FEE_RATE),
-    currency: source.currency,
-  };
+  // Rounded up: TPay must never under-charge its own spread.
+  const fee = multiplyMoney(request.sendAmount, FEE_RATE, 'up');
 
   return {
     id: `fxq_${now}_${source.id}_${target.id}`,
@@ -76,10 +85,7 @@ export function buildExchangeQuote(request: ExchangeQuoteRequest, now = Date.now
 
 /** What actually leaves the source account: the amount plus the spread. */
 export function totalDebit(quote: ExchangeQuote): Money {
-  return {
-    minorUnits: quote.sourceAmount.minorUnits + quote.fee.minorUnits,
-    currency: quote.sourceAmount.currency,
-  };
+  return addMoney(quote.sourceAmount, quote.fee);
 }
 
 export const mockFxService: FxService = {
@@ -117,70 +123,74 @@ export const mockFxService: FxService = {
     return respond('fxService.quoteExchange', quote);
   },
 
-  executeExchange: (quoteId) => {
-    // Re-checked at booking: a restriction applied after the quote must still
-    // stop it.
-    const restricted = accountRestrictionError();
-    if (restricted) return Promise.reject(restricted);
+  executeExchange: (quoteId, idempotencyKey) => {
+    // Booking the same quote twice would convert twice; the key makes a retry
+    // return the original result instead.
+    return runOnce('fx.execute', idempotencyKey, { quoteId }, () => {
+      // Re-checked at booking: a restriction applied after the quote must still
+      // stop it.
+      const restricted = accountRestrictionError();
+      if (restricted) return Promise.reject(restricted);
 
-    const quote = exchangeQuotes.get(quoteId);
-    if (!quote) return Promise.reject(new Error('Unknown exchange quote'));
-    if (Date.parse(quote.expiresAt) < Date.now()) return Promise.reject(new QuoteExpiredError());
+      const quote = exchangeQuotes.get(quoteId);
+      if (!quote) return Promise.reject(new Error('Unknown exchange quote'));
+      if (Date.parse(quote.expiresAt) < Date.now()) return Promise.reject(new QuoteExpiredError());
 
-    const debit = totalDebit(quote);
-    const source = findAccount(quote.sourceAccountId);
-    if (!source || source.balance.minorUnits < debit.minorUnits) {
-      return Promise.reject(
-        new InsufficientFundsError('There is not enough in that account for this exchange.'),
-      );
-    }
+      const debit = totalDebit(quote);
+      const source = findAccount(quote.sourceAccountId);
+      if (!source || source.balance.minorUnits < debit.minorUnits) {
+        return Promise.reject(
+          new InsufficientFundsError('There is not enough in that account for this exchange.'),
+        );
+      }
 
-    const occurredAt = new Date().toISOString();
-    const exchangeId = `fxe_${Date.now()}`;
-    const reference = `TPY-FX-${String(Date.now()).slice(-4)}`;
-    const label = `${quote.from} → ${quote.to} exchange`;
+      const occurredAt = new Date().toISOString();
+      const exchangeId = `fxe_${Date.now()}`;
+      const reference = `TPY-FX-${String(Date.now()).slice(-4)}`;
+      const label = `${quote.from} → ${quote.to} exchange`;
 
-    const sourceTransaction: Transaction = {
-      id: `txn_${exchangeId}_out`,
-      type: 'fx',
-      direction: 'debit',
-      description: label,
-      amount: debit,
-      occurredAt,
-      status: 'completed',
-      accountId: quote.sourceAccountId,
-      reference,
-      fee: quote.fee,
-      fxRate: { from: quote.from, to: quote.to, rate: quote.rate },
-      counterAmount: quote.targetAmount,
-    };
+      const sourceTransaction: Transaction = {
+        id: `txn_${exchangeId}_out`,
+        type: 'fx',
+        direction: 'debit',
+        description: label,
+        amount: debit,
+        occurredAt,
+        status: 'completed',
+        accountId: quote.sourceAccountId,
+        reference,
+        fee: quote.fee,
+        fxRate: { from: quote.from, to: quote.to, rate: quote.rate },
+        counterAmount: quote.targetAmount,
+      };
 
-    const targetTransaction: Transaction = {
-      id: `txn_${exchangeId}_in`,
-      type: 'fx',
-      direction: 'credit',
-      description: label,
-      amount: quote.targetAmount,
-      occurredAt,
-      status: 'completed',
-      accountId: quote.targetAccountId,
-      reference,
-      fxRate: { from: quote.from, to: quote.to, rate: quote.rate },
-      counterAmount: quote.sourceAmount,
-    };
+      const targetTransaction: Transaction = {
+        id: `txn_${exchangeId}_in`,
+        type: 'fx',
+        direction: 'credit',
+        description: label,
+        amount: quote.targetAmount,
+        occurredAt,
+        status: 'completed',
+        accountId: quote.targetAccountId,
+        reference,
+        fxRate: { from: quote.from, to: quote.to, rate: quote.rate },
+        counterAmount: quote.sourceAmount,
+      };
 
-    adjustBalance(quote.sourceAccountId, { ...debit, minorUnits: -debit.minorUnits });
-    adjustBalance(quote.targetAccountId, quote.targetAmount);
-    // The headline balance is derived from the accounts, so moving them is
-    // enough — there is no separate total to keep in step.
-    recordTransactions([sourceTransaction, targetTransaction]);
-    exchangeQuotes.delete(quoteId);
+      adjustBalance(quote.sourceAccountId, negate(debit));
+      adjustBalance(quote.targetAccountId, quote.targetAmount);
+      // The headline balance is derived from the accounts, so moving them is
+      // enough — there is no separate total to keep in step.
+      recordTransactions([sourceTransaction, targetTransaction]);
+      exchangeQuotes.delete(quoteId);
 
-    return respond('fxService.executeExchange', {
-      exchangeId,
-      sourceTransaction,
-      targetTransaction,
-      targetAmount: quote.targetAmount,
-    } satisfies ExchangeResult);
+      return respond('fxService.executeExchange', {
+        exchangeId,
+        sourceTransaction,
+        targetTransaction,
+        targetAmount: quote.targetAmount,
+      } satisfies ExchangeResult);
+    });
   },
 };

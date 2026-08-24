@@ -22,6 +22,11 @@ export type KycState = {
 };
 
 export type KycCallbackPayload = {
+  /**
+   * The provider's own id for this event. Verification providers redeliver
+   * webhooks; recording the id means a repeat is recognised, not re-applied.
+   */
+  readonly eventId?: string;
   readonly sessionId: string;
   readonly providerStatus: string;
   readonly reason?: string;

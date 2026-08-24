@@ -6,10 +6,12 @@ import {
   UnsupportedCorridorError,
   type Recipient,
   type RecipientDraft,
+  newIdempotencyKey,
 } from '@/services/contracts';
 import { fromMajor } from '@/types';
 import { findAccount, getTransactions, resetStore } from './data/store';
 import { rateBetween } from './fxService';
+import { resetIdempotency } from './idempotency';
 import { configureMockBehaviour } from './latency';
 import { mockTransferService, resetTransfers } from './transferService';
 import { mockWalletService } from './walletService';
@@ -17,6 +19,7 @@ import { mockWalletService } from './walletService';
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
 
 beforeEach(() => {
+  resetIdempotency();
   resetStore();
   resetTransfers();
 });
@@ -134,7 +137,7 @@ describe('createTransfer — a successful send', () => {
     const before = findAccount('acc_usd')!.balance.minorUnits;
     const quote = await quoteFor(target, 'acc_usd', 1000, 'USD');
 
-    await service.createTransfer({ quoteId: quote.id });
+    await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     assert.equal(findAccount('acc_usd')!.balance.minorUnits, before - 100250);
   });
@@ -145,7 +148,7 @@ describe('createTransfer — a successful send', () => {
     const sarBefore = findAccount('acc_sar')!.balance.minorUnits;
 
     const quote = await quoteFor(target, 'acc_sar', 100, 'SAR');
-    await service.createTransfer({ quoteId: quote.id });
+    await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     assert.equal(findAccount('acc_usd')!.balance.minorUnits, usdBefore, 'USD untouched');
     assert.equal(
@@ -157,7 +160,7 @@ describe('createTransfer — a successful send', () => {
   it('creates one transaction on the source account', async () => {
     const target = await recipient();
     const quote = await quoteFor(target, 'acc_usd', 1000, 'USD');
-    const { transaction } = await service.createTransfer({ quoteId: quote.id });
+    const { transaction } = await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     assert.ok(transaction);
     assert.equal(transaction.type, 'transfer');
@@ -173,7 +176,7 @@ describe('createTransfer — a successful send', () => {
     const before = (await mockWalletService.getBalance()).total.minorUnits;
 
     const quote = await quoteFor(target, 'acc_usd', 500, 'USD');
-    await service.createTransfer({ quoteId: quote.id });
+    await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     const after = (await mockWalletService.getBalance()).total.minorUnits;
     assert.equal(after, before - quote.totalDebit.minorUnits);
@@ -182,7 +185,7 @@ describe('createTransfer — a successful send', () => {
   it('records a transfer that can be read back', async () => {
     const target = await recipient();
     const quote = await quoteFor(target, 'acc_usd', 1000, 'USD');
-    const { transfer } = await service.createTransfer({ quoteId: quote.id });
+    const { transfer } = await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     const stored = await service.getTransfer(transfer.id);
     assert.equal(stored.id, transfer.id);
@@ -193,9 +196,9 @@ describe('createTransfer — a successful send', () => {
   it('refuses to book the same quote twice', async () => {
     const target = await recipient();
     const quote = await quoteFor(target, 'acc_usd', 10, 'USD');
-    await service.createTransfer({ quoteId: quote.id });
+    await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
-    await assert.rejects(() => service.createTransfer({ quoteId: quote.id }));
+    await assert.rejects(() => service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id }));
   });
 });
 
@@ -203,7 +206,7 @@ describe('createTransfer — pending and instant settlement', () => {
   it('leaves a bank payout processing, with a pending transaction', async () => {
     const target = await recipient();
     const quote = await quoteFor(target, 'acc_usd', 100, 'USD');
-    const { transfer, transaction } = await service.createTransfer({ quoteId: quote.id });
+    const { transfer, transaction } = await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     assert.equal(transfer.status, 'processing');
     assert.equal(transaction?.status, 'pending');
@@ -219,7 +222,7 @@ describe('createTransfer — pending and instant settlement', () => {
       institution: 'TPay balance',
     });
     const quote = await quoteFor(target, 'acc_usd', 100, 'USD');
-    const { transfer, transaction } = await service.createTransfer({ quoteId: quote.id });
+    const { transfer, transaction } = await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 
     assert.equal(transfer.status, 'completed');
     assert.equal(transaction?.status, 'completed');
@@ -234,6 +237,7 @@ describe('createTransfer — nothing moves when it fails', () => {
 
     const quote = await quoteFor(target, 'acc_usd', 1000, 'USD');
     const { transfer, transaction } = await service.createTransfer({
+      idempotencyKey: newIdempotencyKey(),
       quoteId: quote.id,
       demoOutcome: 'failure',
     });
@@ -250,6 +254,7 @@ describe('createTransfer — nothing moves when it fails', () => {
     const target = await recipient();
     const quote = await quoteFor(target, 'acc_usd', 1000, 'USD');
     const { transfer } = await service.createTransfer({
+      idempotencyKey: newIdempotencyKey(),
       quoteId: quote.id,
       demoOutcome: 'failure',
     });
@@ -263,7 +268,7 @@ describe('createTransfer — nothing moves when it fails', () => {
     const quote = await quoteFor(target, 'acc_usd', 8250, 'USD');
 
     await assert.rejects(
-      () => service.createTransfer({ quoteId: quote.id }),
+      () => service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id }),
       (error: Error) => error instanceof InsufficientFundsError,
     );
     assert.equal(findAccount('acc_usd')!.balance.minorUnits, 825000);
@@ -293,7 +298,7 @@ describe('recipients', () => {
     const created = await recipient({ name: 'One Off', save: false });
     const quote = await quoteFor(created, 'acc_usd', 50, 'USD');
 
-    const { transfer } = await service.createTransfer({ quoteId: quote.id });
+    const { transfer } = await service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
     assert.equal(transfer.recipient.id, created.id);
   });
 

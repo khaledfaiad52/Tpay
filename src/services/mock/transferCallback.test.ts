@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { NotFoundError, type Recipient, type RecipientDraft } from '@/services/contracts';
+import { NotFoundError, type Recipient, type RecipientDraft, newIdempotencyKey } from '@/services/contracts';
 import { fromMajor } from '@/types';
 import { findAccount, getTransactions, resetStore } from './data/store';
+import { resetIdempotency } from './idempotency';
 import { configureMockBehaviour } from './latency';
 import { breachedLimit, limitApplies, mockTransferService, resetTransfers } from './transferService';
 
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
 
 beforeEach(() => {
+  resetIdempotency();
   resetStore();
   resetTransfers();
 });
@@ -35,7 +37,7 @@ async function sendUsd(recipient: Recipient, major = 1000) {
     sourceAccountId: 'acc_usd',
     sendAmount: fromMajor(major, 'USD'),
   });
-  return service.createTransfer({ quoteId: quote.id });
+  return service.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: quote.id });
 }
 
 describe('handleTransferCallback', () => {

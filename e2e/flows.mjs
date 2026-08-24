@@ -122,8 +122,52 @@ export async function runFlows(page, log) {
     await byTestId('login-password').fill('demo-password');
     await byTestId('login-submit').click();
     await page.waitForTimeout(BOOT_MS);
+
+    // Two-factor is on for the demo account, so a device it has not been seen
+    // on is challenged. Answering it is part of getting through the door.
+    const code = byTestId('verify-code');
+    if (await code.count()) {
+      await code.fill('419204');
+      await page.waitForTimeout(400);
+      await byTestId('verify-submit').click();
+      await page.waitForTimeout(BOOT_MS);
+    }
   };
 
+  /**
+   * Ends the session deliberately, through the UI, rather than relying on a
+   * reload to drop it.
+   *
+   * The web build keeps the session in memory, so a reload happens to clear it
+   * — but a test that leans on that is testing the harness, not the app. This
+   * signs out the way a person does, so the assertion is about the real
+   * session transition.
+   */
+  const signOutThroughUi = async () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (await byTestId('tab-profile').count()) break;
+      const backButton = byTestId('screen-header-back');
+      if (await backButton.count()) await backButton.click();
+      else break;
+      await page.waitForTimeout(STEP_MS);
+    }
+    if (!(await byTestId('tab-profile').count())) return;
+    await byTestId('tab-profile').click();
+    await page.waitForTimeout(STEP_MS);
+    const logOut = byTestId('profile-log-out');
+    if (await logOut.count()) {
+      await logOut.click();
+      await page.waitForTimeout(BOOT_MS);
+    }
+  };
+
+  /**
+   * Back to a clean signed-in Home.
+   *
+   * The reload here is about the mock *store* — balances and transfers —
+   * which a flow that has moved money needs reset. Session state is handled
+   * explicitly by `signInIfNeeded` and `signOutThroughUi`.
+   */
   const goHome = async () => {
     await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(BOOT_MS);
@@ -321,6 +365,7 @@ export async function runFlows(page, log) {
     back,
     goHome,
     signInIfNeeded,
+    signOutThroughUi,
     byTestId,
     page,
   });
@@ -1148,6 +1193,7 @@ async function runAuthFlows({
   back,
   goHome,
   signInIfNeeded,
+  signOutThroughUi,
   byTestId,
   page,
 }) {
@@ -1155,8 +1201,15 @@ async function runAuthFlows({
   const EMAIL = 'khaled.faiad@demo.acme.sa';
   const PASSWORD = 'demo-password';
 
-  /** Reloads to a signed-out app, without signing back in. */
+  /**
+   * Puts the app in a signed-out state and opens `path`.
+   *
+   * The sign-out is a real session transition through the UI, not a reload
+   * that happens to drop an in-memory session — so what follows is testing the
+   * guard rather than the harness.
+   */
   const signedOut = async (path = '/') => {
+    await signOutThroughUi();
     await page.goto(`${BASE_URL}${path}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2500);
   };
@@ -1204,6 +1257,15 @@ async function runAuthFlows({
 
   await byTestId('login-password').fill(PASSWORD);
   await tapId('login-submit');
+  await page.waitForTimeout(2000);
+  await check('Two-factor challenges an untrusted device', 'Confirm it is you');
+  await check('It explains why', 'Two-factor authentication is on for this account');
+  await fillOtp('000000');
+  await tapId('verify-submit');
+  await page.waitForTimeout(1600);
+  await check('A wrong two-factor code is refused', "That code isn't right");
+  await fillOtp(OTP);
+  await tapId('verify-submit');
   await page.waitForTimeout(2500);
   await check('The right credentials reach Home', 'TPAY BALANCE');
   await checkUrl('Login lands on Home, not the login screen', '/');
@@ -1226,6 +1288,8 @@ async function runAuthFlows({
   await byTestId('login-password').fill(PASSWORD);
   await tapId('login-submit');
   await page.waitForTimeout(2500);
+  // This device has signed in before, so two-factor does not challenge again.
+  await checkMissing('A trusted device is not challenged again', 'Confirm it is you');
   await check('Logging back in works', 'TPAY BALANCE');
 
   // ---- Session expiry -----------------------------------------------------

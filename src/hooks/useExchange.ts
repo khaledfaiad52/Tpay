@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   AccountRestrictedError,
+  newIdempotencyKey,
   services,
   totalDebit,
   type AccountRestriction,
@@ -75,6 +76,8 @@ export function useExchange(): ExchangeState {
   const [quoteEntry, setQuoteEntry] = useState<{ key: string; quote: ExchangeQuote }>();
   const [failure, setFailure] = useState<string>();
   const [restriction, setRestriction] = useState<AccountRestriction>();
+  /** Minted when the user confirms, reused across retries of that intent. */
+  const [exchangeKey, setExchangeKey] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Ticks once a second so the rate countdown stays live.
   const [now, setNow] = useState(() => Date.now());
@@ -164,10 +167,13 @@ export function useExchange(): ExchangeState {
     if (!quote || insufficient) return undefined;
     setIsSubmitting(true);
     setFailure(undefined);
+    const key = exchangeKey ?? newIdempotencyKey('fx');
+    setExchangeKey(key);
     try {
-      const result = await services.fx.executeExchange(quote.id);
+      const result = await services.fx.executeExchange(quote.id, key);
       setQuoteEntry(undefined);
       setAmountText('');
+      setExchangeKey(undefined);
       return result.targetAmount;
     } catch (cause) {
       if (cause instanceof AccountRestrictedError) setRestriction(cause.restriction);
@@ -176,11 +182,13 @@ export function useExchange(): ExchangeState {
     } finally {
       setIsSubmitting(false);
     }
-  }, [quote, insufficient]);
+  }, [quote, insufficient, exchangeKey]);
 
   const changeAmount = useCallback((value: string) => {
     setAmountText(value);
     setFailure(undefined);
+    // A different amount is a different intent, so the key must not carry.
+    setExchangeKey(undefined);
   }, []);
 
   const blurAmount = useCallback(() => {

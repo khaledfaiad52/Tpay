@@ -8,6 +8,7 @@ import type {
   Money,
   Transaction,
 } from '@/types';
+import type { IdempotentRequest } from './idempotency';
 
 /**
  * How the user proved it was them before a card acted.
@@ -24,7 +25,7 @@ export type CardAuthorization = {
 };
 
 /** What a purchase needs to know. A real terminal supplies the same fields. */
-export type CardPurchaseRequest = {
+export type CardPurchaseRequest = IdempotentRequest & {
   readonly cardId: string;
   readonly amount: Money;
   readonly merchant: string;
@@ -77,6 +78,9 @@ export type CardService = {
    * Authorises a purchase. Rejects when the account is frozen, the card
    * cannot spend, a control forbids it, a limit is reached or the shared
    * wallet balance is short.
+   *
+   * Safe to retry with the same `idempotencyKey`: a processor that redelivers
+   * an authorisation must not debit the wallet twice.
    */
   authorizePurchase(request: CardPurchaseRequest): Promise<Transaction>;
   /** Cancels the card and orders a replacement. */
@@ -85,4 +89,22 @@ export type CardService = {
   getReplacement(cardId: string): Promise<CardReplacement | null>;
   /** Marks a delivered physical card usable. */
   activateCard(cardId: string, authorization: CardAuthorization): Promise<Card>;
+  /**
+   * A card event from the issuer or processor: a delivery reaching the next
+   * stage, an issuer blocking a card, a settlement posting.
+   *
+   * Normalises the provider's vocabulary into TPay card states, exactly as
+   * `handleTransferCallback` does for payouts. Safe against redelivery.
+   */
+  handleCardCallback(payload: CardCallbackPayload): Promise<Card>;
+};
+
+/** What an issuer or processor tells TPay after the fact. */
+export type CardCallbackPayload = {
+  /** The provider's own event id, for redelivery protection. */
+  readonly eventId?: string;
+  readonly cardId: string;
+  /** The provider's word: "produced", "shipped", "blocked", "expired". */
+  readonly providerStatus: string;
+  readonly reason?: string;
 };

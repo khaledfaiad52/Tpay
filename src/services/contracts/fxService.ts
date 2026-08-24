@@ -1,4 +1,5 @@
 import type { CurrencyCode, Money, Transaction } from '@/types';
+import type { IdempotencyKey } from './idempotency';
 
 export type FxQuote = {
   readonly id: string;
@@ -42,6 +43,9 @@ export type FxService = {
   quote(sourceAmount: Money, to: CurrencyCode): Promise<FxQuote>;
   /** A bookable wallet-to-wallet conversion between two of the user's accounts. */
   quoteExchange(request: ExchangeQuoteRequest): Promise<ExchangeQuote>;
-  /** Books a quote. Rejects when the quote has expired or funds are short. */
-  executeExchange(quoteId: string): Promise<ExchangeResult>;
+  /**
+   * Books a quote. Rejects when the quote has expired or funds are short.
+   * Safe to retry with the same `idempotencyKey`.
+   */
+  executeExchange(quoteId: string, idempotencyKey?: IdempotencyKey): Promise<ExchangeResult>;
 };

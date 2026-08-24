@@ -49,7 +49,8 @@ describe('titleFor', () => {
   it('includes the amount on a reimbursement', () => {
     assert.equal(
       titleFor({ type: 'reimbursement', amount: fromMajor(310, 'USD') }),
-      'Expense reimbursement · USD 310',
+      // Formatted through the one money formatter, not divided by hand.
+      'Expense reimbursement · $310.00',
     );
   });
 

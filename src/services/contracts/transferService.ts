@@ -1,4 +1,5 @@
 import type { CurrencyCode, KycStatus, Money, Transaction } from '@/types';
+import type { IdempotentRequest } from './idempotency';
 
 /**
  * How the recipient is addressed. One Send Money product covers all of them —
@@ -140,7 +141,7 @@ export type TransferConfirmation = {
   readonly token?: string;
 };
 
-export type TransferRequest = {
+export type TransferRequest = IdempotentRequest & {
   readonly quoteId: string;
   readonly reference?: string;
   readonly confirmation?: TransferConfirmation;
@@ -160,6 +161,12 @@ export type TransferRequest = {
  * status string.
  */
 export type TransferCallbackPayload = {
+  /**
+   * The provider's own id for this event. Networks redeliver, so the same
+   * event can arrive more than once; an adapter that records this can ignore
+   * a repeat instead of applying it twice.
+   */
+  readonly eventId?: string;
   /** TPay's own transfer id, or the reference the provider echoes back. */
   readonly transferId?: string;
   readonly reference?: string;
@@ -186,6 +193,10 @@ export type TransferService = {
   listCorridors(): Promise<readonly Corridor[]>;
   /** Rejects when the corridor is unsupported or the account is short. */
   quoteTransfer(request: TransferQuoteRequest): Promise<TransferQuote>;
+  /**
+   * Books the transfer. Safe to retry with the same `idempotencyKey`: a
+   * repeat returns the original result rather than sending twice.
+   */
   createTransfer(request: TransferRequest): Promise<TransferResult>;
   getTransfer(transferId: string): Promise<Transfer>;
   listTransfers(): Promise<readonly Transfer[]>;

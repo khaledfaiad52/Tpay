@@ -15,7 +15,8 @@
     "test": "npm run test:unit",
     "test:unit": "node --import ./test/setup.mjs --test \"src/**/*.test.ts\"",
     "test:e2e": "node e2e/run.mjs",
-    "test:e2e:production": "node e2e/production.mjs"
+    "test:e2e:production": "node e2e/production.mjs",
+    "export:web:production": "EXPO_PUBLIC_TPAY_ENV=production EXPO_PUBLIC_ENABLE_KYC_DEMO=true EXPO_PUBLIC_ENABLE_CARD_DEMO=true EXPO_PUBLIC_ENABLE_SESSION_DEMO=true expo export --platform web --clear"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "^0.4.1",

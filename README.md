@@ -12,7 +12,7 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 
 ---
 
-## Status — Phase 6 complete
+## Status — Phase 7 complete
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -23,6 +23,7 @@ of truth for the UI. Screens are implemented to match it, not reinterpreted.
 | 5A | Identity verification, Profile, Security, Support, notifications | **Done** |
 | 5B | TPay Card — cards, details, freeze, controls, limits, replacement | **Done** |
 | 6 | Authentication, signup, OTP, onboarding, biometric unlock | **Done** |
+| 7 | Production readiness: idempotency, error model, provider architecture | **Done** |
 
 Every screen in the approved design is built, and the app now has a front
 door: it starts signed out, and nothing authenticated renders without a
@@ -95,6 +96,17 @@ Note that a plain static file server cannot resolve dynamic routes
 (`/accounts/acc_usd` is exported as `accounts/[id].html`), so open the app at
 `/` and navigate, as the tests do.
 
+### Environments
+
+`EXPO_PUBLIC_TPAY_ENV` selects `development` (the default), `staging` or
+`production`. A build that means to be production has to say so.
+
+In production the demo controls are **impossible**, not merely off: the
+environment overrides the flag, so a flag left set in a production build still
+ships nothing. `npm run export:web:production` builds with
+`EXPO_PUBLIC_TPAY_ENV=production` and every demo flag deliberately set to
+`true`, and `npm run test:e2e:production` proves none of them render.
+
 ### Environment
 
 No secrets are needed to run the app — it ships with a mock service layer.
@@ -132,9 +144,10 @@ src/
     auth/           session provider, root guard, OTP field, step rail
     navigation/     tab bar, screen header, phase placeholder
   services/
-    contracts/      provider-agnostic service interfaces
+    contracts/      provider-agnostic service interfaces + the domain errors
     mock/           the adapter set that backs the app today
-    device/         platform capabilities (biometrics), not provider adapters
+    providers/      where provider-backed adapters go (empty by design)
+    device/         platform capabilities — biometrics, secure storage
     registry.ts     resolves one adapter set for the whole app
   types/            domain model — Money, Transaction, Account, Card, …
   hooks/            useAsyncData and one data hook per screen area
@@ -181,6 +194,70 @@ Money is always `{ minorUnits, currency }` — never a float, never a
 pre-formatted string. Formatting happens once, in `src/utils/format.ts`, and
 reaches the screen through `<AmountText />`.
 
+Arithmetic lives in `src/types/money.ts` and nowhere else: `addMoney`,
+`subtractMoney`, `negate`, `sumMoney`, `multiplyMoney`, `convertMoney`. Adding
+two different currencies throws rather than producing a plausible wrong number.
+
+`multiplyMoney` is the only place a float touches money, so rounding can be
+reasoned about in one function. The direction is always explicit, because it
+decides who absorbs the half-unit:
+
+- `half-up` — conversions.
+- `up` — fees, so TPay never under-charges its own spread.
+- `down` — anywhere the user must never be over-credited.
+
+Conversions round exactly **once**. They used to divide into major units,
+multiply by the rate, then round back — two float steps, and two chances for a
+quote and its execution to disagree.
+
+### Idempotency
+
+Every operation that moves money takes an `idempotencyKey`, and the type
+system requires it — a call without one does not compile.
+
+```ts
+const key = newIdempotencyKey('trf');   // minted once, when the user commits
+await services.transfer.createTransfer({ idempotencyKey: key, quoteId });
+```
+
+The key is minted at the point of intent and reused for every retry of that
+intent. Changing the amount clears it, because that is a different intent.
+`runOnce` in `src/services/mock/idempotency.ts` is the one implementation:
+
+- First call — does the work, remembers the result.
+- Same key, same request — returns the stored result. The money moves once.
+- Same key, **different** request — refused with `DuplicateOperationError`,
+  because replaying the wrong result would hide a caller bug.
+
+This matters most where it is least visible. A transfer that times out has an
+unknown outcome: the money may or may not have left. `isOutcomeUnknown(error)`
+identifies exactly those failures, and the only safe response is to retry with
+the same key.
+
+Inbound provider events are deduplicated the same way, by the provider's own
+`eventId` — every payout network redelivers, and a returned transfer credited
+twice would invent money.
+
+### The domain error model
+
+Every failure a user can see is a `DomainError` with a stable `code`:
+
+`not-found` · `insufficient-funds` · `account-restricted` · `kyc-required` ·
+`transfer-limit-exceeded` · `unsupported-corridor` · `quote-expired` ·
+`card-declined` · `invalid-credentials` · `otp-invalid` · `otp-expired` ·
+`too-many-attempts` · `session-expired` · `password-rejected` ·
+`biometric-unavailable` · `duplicate-operation` · `provider-unavailable` ·
+`timeout` · `network`
+
+`instanceof` works inside one bundle, but a real adapter reconstructs errors
+from an HTTP response, and a code is what survives that boundary. Screens
+branch on `hasCode(error, …)` and reach for `instanceof` only when they need a
+field the subclass adds. `retryable` says whether repeating the request could
+help; `isOutcomeUnknown` says whether the money might already have moved.
+
+A provider's own error code may travel as a diagnostic for support. It is
+never what a screen branches on.
+
 ### One balance
 
 The TPay Wallet and the TPay Card share a single balance. `Card` carries no
@@ -204,6 +281,39 @@ Two rules, applied everywhere:
 Any TPay wallet currency can fund a send. Which corridors TPay can actually
 deliver on lives behind `transferService.listCorridors()`, so provider limits
 never leak into a screen.
+
+### Providers plug in at one layer
+
+```
+TPay domain      →  Service contracts  →  Provider adapters  →  External APIs
+src/types           src/services/          src/services/          reached from
+                    contracts              providers/<name>       the backend
+```
+
+`src/services/providers/` is empty by design and documents the contract an
+adapter has to fit. The rules, in short: never leak the provider's name,
+status strings or error codes; map every failure onto the domain error model;
+honour the idempotency key; normalise inbound events; and hold no secrets,
+because a mobile bundle is readable by anyone who installs the app.
+
+| Concern | Contract | Inbound events |
+| --- | --- | --- |
+| Payouts and corridors | `TransferService`, `FxService` | `transfer`, `fx` |
+| Identity verification | `KycService` | `kyc` |
+| Cards | `CardService` | `card-transaction`, `card-lifecycle` |
+| Account standing | `SecurityService` | `account-status` |
+| Identity and sessions | `SessionService` | — |
+
+### Every async operation reports back through one door
+
+`ProviderEventEnvelope` is the shape a webhook becomes once an adapter has
+normalised it, and `providerEvents.handleEvent()` routes it to the domain
+service that owns those states. Six domains are modelled: `kyc`, `transfer`,
+`fx`, `card-transaction`, `card-lifecycle`, `account-status`.
+
+The envelope always carries the provider's `eventId`. Signature verification
+is deliberately **not** here: the secret that verifies a webhook cannot live
+in a mobile bundle, so a server does that and forwards the normalised event.
 
 ### Transfers settle on a callback, not a timer
 
@@ -243,6 +353,52 @@ the verification screen can state it *before* the user hits it. When one is
 breached, `TransferLimitExceededError` carries the whole limit — the amount,
 the explanation and the single action that lifts it — so the screen explains
 rather than just refusing.
+
+### Sessions, tokens and what is persisted
+
+A session runs on two tokens. The access token is short (15 minutes) and sent
+with every call; the refresh token is long (30 days) and used only to mint a
+new access token. `refreshSession()` rotates the refresh token on every use,
+so a stolen one is good for at most a single exchange.
+
+Only the minimum is written to the device keychain
+(`expo-secure-store`, `WHEN_UNLOCKED_THIS_DEVICE_ONLY`):
+
+```ts
+{ sessionId, userId, refreshToken, refreshTokenExpiresAt,
+  deviceId, deviceRemembered, biometricUnlockEnabled }
+```
+
+**Never stored:** passwords, one-time codes, access tokens, full card numbers,
+verification documents. The access token is deliberately absent — launching
+mints a fresh one from the refresh token, which is what a real client does.
+Signing out clears the record, and with it the refresh token and the
+biometric-unlock preference; being forgotten is the point of signing out.
+
+The web build has no keychain. Rather than falling back to `localStorage` —
+readable by any script on the origin, and a worse place for a token than
+memory — web keeps the session in memory and the user signs in again on
+reload. That is an honest limitation, not a bug, and `SecureStorage.persists`
+reports it.
+
+### Two-factor challenges devices, not logins
+
+With two-factor on, a device the account has signed in from before is not
+challenged again; an unrecognised one is. `signIn()` therefore answers with a
+`SignInOutcome` — either a session or an OTP challenge — rather than assuming
+correct credentials are the end of it.
+
+### Biometric confirmation is optional everywhere
+
+One resolver, `resolveConfirmation`, serves app unlock, transfer confirmation
+and card-detail reveal. Three outcomes, and no transaction thresholds:
+
+- Not enabled, or the device cannot → the existing tap confirmation, recorded
+  honestly as `tap`.
+- Enabled, available, check passes → `biometric` with the platform's
+  attestation.
+- The check runs and the user cancels → the action is refused. Quietly
+  downgrading a cancellation to `tap` would turn a refusal into an approval.
 
 ### Authentication is a shape, not a guarantee
 
@@ -405,6 +561,15 @@ they came from. Mock conversations only — there is no live-chat backend, and
 the agent is always *TPay support*, never the employer of record.
 
 ---
+
+## Deliberate omissions
+
+- **"Continue with Google"** is drawn on the approved login screen and is not
+  built. A button that does nothing is worse than its absence, and OAuth is a
+  phase of its own. The concept is not present anywhere in the app.
+- No financial, verification, card or SMS provider is integrated. The mock
+  adapter set is not security and is not a backend — it exists so the app can
+  be built and tested against the real shape of each contract.
 
 ## Design fidelity
 

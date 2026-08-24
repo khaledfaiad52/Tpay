@@ -7,9 +7,16 @@
  * script is the other half of that bargain: with the flags absent, nothing
  * demo-only may reach the screen.
  *
- * Usage:
- *   npm run export:web && npx http-server dist -p 4173
- *   node e2e/production.mjs
+ * Run it against either of two builds:
+ *
+ *   npm run export:web              — the demo flags simply absent
+ *   npm run export:web:production   — EXPO_PUBLIC_TPAY_ENV=production with
+ *                                     every demo flag deliberately set to
+ *                                     `true`, proving the environment wins
+ *                                     over the flag rather than merely
+ *                                     defaulting alongside it.
+ *
+ * Then: npx http-server dist -p 4173 && node e2e/production.mjs
  */
 import pkg from 'playwright';
 
@@ -72,6 +79,15 @@ const signIn = async () => {
   await byTestId('login-password').fill('demo-password');
   await byTestId('login-submit').click();
   await page.waitForTimeout(BOOT_MS);
+
+  // Two-factor challenges a device the account has not been seen on.
+  const code = byTestId('verify-code');
+  if (await code.count()) {
+    await code.fill('419204');
+    await page.waitForTimeout(400);
+    await byTestId('verify-submit').click();
+    await page.waitForTimeout(BOOT_MS);
+  }
 };
 
 try {

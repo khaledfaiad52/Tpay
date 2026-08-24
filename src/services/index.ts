@@ -10,7 +10,13 @@ import { resolveServices } from './registry';
  */
 export const services = resolveServices(appConfig.provider);
 
-export { appConfig, type AppConfig, type DemoControls } from './config';
+export {
+  appConfig,
+  isProduction,
+  type AppConfig,
+  type DemoControls,
+  type Environment,
+} from './config';
 export { resolveServices, type ProviderId, type ServiceRegistry } from './registry';
 export * from './contracts';
 export { totalBalanceOf, totalDebit } from './mock';

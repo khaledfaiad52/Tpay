@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { AccountRestrictedError } from '@/services/contracts';
+import { AccountRestrictedError, newIdempotencyKey } from '@/services/contracts';
 import { fromMajor, type KycStatus } from '@/types';
 import { accountCanTransact, currentAccountState } from './accountGuard';
 import { mockCardService, resetCards } from './cardService';
 import { resetStore } from './data/store';
 import { mockKycService, resetKyc, setKycStatus } from './kycService';
+import { resetIdempotency } from './idempotency';
 import { configureMockBehaviour } from './latency';
 import { mockSecurityService, resetSecurity } from './securityService';
-import { demoPassword, mockSessionService, resetSession } from './sessionService';
+import { demoOtpCode, demoPassword, mockSessionService, resetSession } from './sessionService';
 import { mockTransferService, resetTransfers } from './transferService';
 import { mockUserService, resetUser } from './userService';
 import { mockWalletService } from './walletService';
@@ -17,6 +18,7 @@ import { mockWalletService } from './walletService';
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
 
 beforeEach(() => {
+  resetIdempotency();
   resetStore();
   resetKyc();
   resetSecurity();
@@ -33,10 +35,19 @@ describe('a blocked verification does not lock the user out', () => {
   for (const status of BLOCKED) {
     it(`lets a ${status} user sign in`, async () => {
       setKycStatus(status);
-      const state = await mockSessionService.signIn({
+      const outcome = await mockSessionService.signIn({
         identifier: 'khaled.faiad@demo.acme.sa',
         password: demoPassword,
       });
+      // Two-factor is on for the demo account, so a fresh device is
+      // challenged first — which is itself proof they are not locked out.
+      const state =
+        outcome.kind === 'session'
+          ? outcome.state
+          : await mockSessionService.verifySignInChallenge(
+              outcome.challenge.id,
+              demoOtpCode,
+            );
       assert.equal(state.status, 'AUTHENTICATED');
     });
 
@@ -87,6 +98,7 @@ describe('a blocked verification stops money', () => {
       await assert.rejects(
         () =>
           mockCardService.authorizePurchase({
+            idempotencyKey: newIdempotencyKey(),
             cardId: 'card_primary',
             amount: fromMajor(10, 'USD'),
             merchant: 'Panda Hypermarket',
@@ -108,6 +120,7 @@ describe('a blocked verification stops money', () => {
     assert.equal(accountCanTransact(), true);
     assert.ok(
       await mockCardService.authorizePurchase({
+        idempotencyKey: newIdempotencyKey(),
         cardId: 'card_primary',
         amount: fromMajor(10, 'USD'),
         merchant: 'Panda Hypermarket',

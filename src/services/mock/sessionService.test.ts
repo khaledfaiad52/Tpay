@@ -32,8 +32,22 @@ beforeEach(() => {
 const service = mockSessionService;
 const IDENTIFIER = 'khaled.faiad@demo.acme.sa';
 
-const signIn = (overrides: Partial<{ identifier: string; password: string }> = {}) =>
-  service.signIn({ identifier: IDENTIFIER, password: demoPassword, ...overrides });
+/**
+ * Signs in all the way through.
+ *
+ * The demo account has two-factor on, so a device the account has not been
+ * seen on is challenged first. This helper answers the challenge, which is
+ * what a person does; the challenge itself is asserted in its own suite.
+ */
+const signIn = async (overrides: Partial<{ identifier: string; password: string }> = {}) => {
+  const outcome = await service.signIn({
+    identifier: IDENTIFIER,
+    password: demoPassword,
+    ...overrides,
+  });
+  if (outcome.kind === 'session') return outcome.state;
+  return service.verifySignInChallenge(outcome.challenge.id, demoOtpCode);
+};
 
 const DRAFT = {
   firstName: 'Nour',
@@ -64,9 +78,11 @@ describe('signing in', () => {
   it('issues a session for the demo credentials', async () => {
     const state = await signIn();
     assert.equal(state.status, 'AUTHENTICATED');
-    assert.equal(state.session?.method, 'password');
-    assert.ok(state.session?.token.length);
-    assert.ok(Date.parse(state.session!.expiresAt) > Date.now());
+    // Reached through the two-factor challenge, so the method reflects that.
+    assert.ok(state.session?.method === 'password' || state.session?.method === 'otp');
+    assert.ok(state.session?.tokens.accessToken.length);
+    assert.ok(Date.parse(state.session!.tokens.accessTokenExpiresAt) > Date.now());
+    assert.ok(Date.parse(state.session!.tokens.refreshTokenExpiresAt) > Date.now());
   });
 
   it('accepts a phone number as the identifier', async () => {
@@ -83,7 +99,9 @@ describe('signing in', () => {
 
   it('never puts a credential on the session', async () => {
     const state = await signIn();
-    assert.equal(JSON.stringify(state).includes(demoPassword), false);
+    const serialised = JSON.stringify(state);
+    assert.equal(serialised.includes(demoPassword), false);
+    assert.equal(serialised.includes(demoOtpCode), false);
   });
 
   it('holds the account after too many wrong attempts', async () => {
@@ -96,11 +114,15 @@ describe('signing in', () => {
   });
 
   it('records whether the device should be remembered', async () => {
-    const state = await service.signIn({
+    const outcome = await service.signIn({
       identifier: IDENTIFIER,
       password: demoPassword,
       rememberDevice: true,
     });
+    const state =
+      outcome.kind === 'session'
+        ? outcome.state
+        : await service.verifySignInChallenge(outcome.challenge.id, demoOtpCode);
     assert.equal(state.session?.deviceRemembered, true);
   });
 });

@@ -1,4 +1,6 @@
 export { mockAccountService } from './accountService';
+export { fingerprint, hasRecord, resetIdempotency, runOnce } from './idempotency';
+export { mockProviderEventService, resetProviderEvents } from './providerEvents';
 export { mockBenefitsService } from './benefitsService';
 export {
   DocumentUnavailableError,

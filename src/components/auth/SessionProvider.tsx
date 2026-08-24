@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { services } from '@/services';
-import type { Credentials, SignupDraft } from '@/services';
+import type { Credentials, SignInOutcome, SignupDraft } from '@/services';
+import { secureStorage } from '@/services/device';
 import type { SessionState, SignupState } from '@/types';
 
 /** Before the stored session has been looked at, the app knows nothing. */
@@ -15,7 +16,13 @@ export type SessionContextValue = SessionState & {
    * before it has finished onboarding, and this is how the guard knows.
    */
   readonly signup: SignupState | null;
-  signIn: (credentials: Credentials) => Promise<SessionState>;
+  /**
+   * Resolves to `otp-required` when two-factor is on and this device is not
+   * yet trusted — the caller then collects a code and calls
+   * `verifySignInChallenge`.
+   */
+  signIn: (credentials: Credentials) => Promise<SignInOutcome>;
+  verifySignInChallenge: (challengeId: string, code: string) => Promise<SessionState>;
   signInWithBiometrics: (attestation: string) => Promise<SessionState>;
   signOut: () => Promise<void>;
   startSignup: (draft: SignupDraft) => Promise<void>;
@@ -42,6 +49,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Hand the adapter the device keychain before anything asks it to
+    // restore: until this runs it has only memory to work with.
+    services.session.useStorage(secureStorage);
     services.session.restoreSession().then(
       (restored) => {
         if (cancelled) return;
@@ -64,14 +74,34 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (credentials: Credentials) => {
     setState({ status: 'AUTHENTICATING', reason: 'never-signed-in' });
     try {
-      const next = await services.session.signIn(credentials);
-      setState(next);
-      return next;
+      const outcome = await services.session.signIn(credentials);
+      if (outcome.kind === 'session') {
+        setState(outcome.state);
+      } else {
+        // Correct credentials, but this device still has to prove itself.
+        setState({ status: 'SIGNED_OUT', reason: 'never-signed-in' });
+      }
+      return outcome;
     } catch (cause) {
       setState({ status: 'SIGNED_OUT', reason: 'never-signed-in' });
       throw cause;
     }
   }, []);
+
+  const verifySignInChallenge = useCallback(
+    async (challengeId: string, code: string) => {
+      setState({ status: 'AUTHENTICATING', reason: 'never-signed-in' });
+      try {
+        const next = await services.session.verifySignInChallenge(challengeId, code);
+        setState(next);
+        return next;
+      } catch (cause) {
+        setState({ status: 'SIGNED_OUT', reason: 'never-signed-in' });
+        throw cause;
+      }
+    },
+    [],
+  );
 
   const signInWithBiometrics = useCallback(async (attestation: string) => {
     setState({ status: 'AUTHENTICATING', reason: 'never-signed-in' });
@@ -115,6 +145,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       isRestoring,
       signup,
       signIn,
+      verifySignInChallenge,
       signInWithBiometrics,
       signOut,
       startSignup,
@@ -127,6 +158,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       isRestoring,
       signup,
       signIn,
+      verifySignInChallenge,
       signInWithBiometrics,
       signOut,
       startSignup,

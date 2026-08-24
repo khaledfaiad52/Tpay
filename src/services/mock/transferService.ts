@@ -1,6 +1,7 @@
 import {
   InsufficientFundsError,
   NotFoundError,
+  ProviderUnavailableError,
   QuoteExpiredError,
   TransferLimitExceededError,
   UnsupportedCorridorError,
@@ -19,12 +20,14 @@ import {
 } from '@/services/contracts';
 import {
   fromMajor,
+  negate,
   type CurrencyCode,
   type KycStatus,
   type Money,
   type Transaction,
 } from '@/types';
 import { accountRestrictionError, requireActiveAccount } from './accountGuard';
+import { runOnce } from './idempotency';
 import { currentKycStatus } from './kycService';
 import {
   adjustBalance,
@@ -34,6 +37,28 @@ import {
 } from './data/store';
 import { convert, rateBetween } from './fxService';
 import { respond } from './latency';
+
+/**
+ * Monotonic within the session.
+ *
+ * Ids were derived from `Date.now()`, which collides when two things happen
+ * in the same millisecond. A real backend hands out ids; until then a counter
+ * removes the collision without pretending to be a real id scheme.
+ */
+let sequence = 0;
+
+function nextId(prefix: string): string {
+  sequence += 1;
+  return `${prefix}_${Date.now().toString(36)}${sequence.toString(36)}`;
+}
+
+/**
+ * Provider events already applied, by the provider's own event id.
+ *
+ * Payout networks redeliver: the same webhook can arrive twice. Recording the
+ * id means a redelivery is recognised and ignored rather than applied again.
+ */
+const appliedEvents = new Set<string>();
 
 /** Saved recipients, seeded with the people the design shows. */
 const SEED_RECIPIENTS: readonly Recipient[] = [
@@ -521,101 +546,104 @@ export const mockTransferService: TransferService = {
     return respond('transferService.quoteTransfer', quote);
   },
 
-  createTransfer: ({ quoteId, reference, demoOutcome }) => {
-    // Checked again at the point of booking: a restriction applied while the
-    // user was on the review screen must still stop the money.
-    const restricted = accountRestrictionError();
-    if (restricted) return Promise.reject(restricted);
+  createTransfer: (request) => {
+    const { idempotencyKey, quoteId, reference, demoOutcome } = request;
 
-    const quote = quotes.get(quoteId);
-    if (!quote) return Promise.reject(new NotFoundError('Transfer quote', quoteId));
-    if (Date.parse(quote.expiresAt) < Date.now()) {
-      return Promise.reject(
-        new QuoteExpiredError('That rate has expired. Go back and refresh the amount.'),
-      );
-    }
+    // Every retry of the same intent returns the first result. A transfer
+    // that timed out and is retried settles once, not twice.
+    return runOnce('transfer.create', idempotencyKey, request, () => {
+      // Checked again at the point of booking: a restriction applied while the
+      // user was on the review screen must still stop the money.
+      const restricted = accountRestrictionError();
+      if (restricted) return Promise.reject(restricted);
 
-    const source = findAccount(quote.sourceAccountId);
-    if (!source) return Promise.reject(new NotFoundError('Account', quote.sourceAccountId));
+      const quote = quotes.get(quoteId);
+      if (!quote) return Promise.reject(new NotFoundError('Transfer quote', quoteId));
+      if (Date.parse(quote.expiresAt) < Date.now()) {
+        return Promise.reject(
+          new QuoteExpiredError('That rate has expired. Go back and refresh the amount.'),
+        );
+      }
 
-    const createdAt = new Date().toISOString();
-    const transferId = `trf_${Date.now()}`;
-    const transferReference = reference ?? `TPY-${String(Date.now()).slice(-4)}-KF44`;
+      const source = findAccount(quote.sourceAccountId);
+      if (!source) return Promise.reject(new NotFoundError('Account', quote.sourceAccountId));
 
-    const base = {
-      id: transferId,
-      recipient: quote.recipient,
-      sourceAccountId: quote.sourceAccountId,
-      sendAmount: quote.sendAmount,
-      receiveAmount: quote.receiveAmount,
-      fee: quote.fee,
-      totalDebit: quote.totalDebit,
-      fxRate: quote.fxRate,
-      createdAt,
-      arrivesBy: quote.arrivesBy,
-      estimatedDelivery: quote.estimatedDelivery,
-      payoutMethod: quote.payoutMethod,
-      reference: transferReference,
-    } as const;
+      const createdAt = new Date().toISOString();
+      const transferId = nextId('trf');
+      const transferReference = reference ?? `TPY-${String(Date.now()).slice(-4)}-KF44`;
 
-    // A failed transfer must leave the balance untouched.
-    if (demoOutcome === 'failure') {
-      const failed: Transfer = {
-        ...base,
-        status: 'failed',
-        failureReason: `We couldn't complete this transfer. ${
-          quote.recipient.institution ?? 'The receiving bank'
-        } rejected the recipient details. Nothing has left your account.`,
-        errorCode: 'RECIPIENT_REJECTED',
+      const base = {
+        id: transferId,
+        recipient: quote.recipient,
+        sourceAccountId: quote.sourceAccountId,
+        sendAmount: quote.sendAmount,
+        receiveAmount: quote.receiveAmount,
+        fee: quote.fee,
+        totalDebit: quote.totalDebit,
+        fxRate: quote.fxRate,
+        createdAt,
+        arrivesBy: quote.arrivesBy,
+        estimatedDelivery: quote.estimatedDelivery,
+        payoutMethod: quote.payoutMethod,
+        reference: transferReference,
+      } as const;
+
+      // A failed transfer must leave the balance untouched.
+      if (demoOutcome === 'failure') {
+        const failed: Transfer = {
+          ...base,
+          status: 'failed',
+          failureReason: `We couldn't complete this transfer. ${
+            quote.recipient.institution ?? 'The receiving bank'
+          } rejected the recipient details. Nothing has left your account.`,
+          errorCode: 'RECIPIENT_REJECTED',
+        };
+        transfers = [failed, ...transfers];
+        quotes.delete(quoteId);
+        return respond('transferService.createTransfer', { transfer: failed });
+      }
+
+      if (source.balance.minorUnits < quote.totalDebit.minorUnits) {
+        return Promise.reject(
+          new InsufficientFundsError('There is not enough in that account for this transfer.'),
+        );
+      }
+
+      // Instant corridors settle immediately; bank payouts stay pending until
+      // the receiving side confirms.
+      const settlesInstantly = quote.payoutMethod === 'TPay balance';
+
+      const transaction: Transaction = {
+        id: `txn_${transferId}`,
+        type: 'transfer',
+        direction: 'debit',
+        description: quote.recipient.name,
+        amount: quote.totalDebit,
+        occurredAt: createdAt,
+        status: settlesInstantly ? 'completed' : 'pending',
+        accountId: quote.sourceAccountId,
+        reference: transferReference,
+        counterpartyBank: quote.recipient.institution,
+        fee: quote.fee,
+        fxRate: quote.fxRate
+          ? { from: quote.sendAmount.currency, to: quote.receiveAmount.currency, rate: quote.fxRate }
+          : undefined,
+        counterAmount: quote.fxRate ? quote.receiveAmount : undefined,
       };
-      transfers = [failed, ...transfers];
+
+      const transfer: Transfer = {
+        ...base,
+        status: settlesInstantly ? 'completed' : 'processing',
+        transactionId: transaction.id,
+      };
+
+      adjustBalance(quote.sourceAccountId, negate(quote.totalDebit));
+      recordTransactions([transaction]);
+      transfers = [transfer, ...transfers];
       quotes.delete(quoteId);
-      return respond('transferService.createTransfer', { transfer: failed });
-    }
 
-    if (source.balance.minorUnits < quote.totalDebit.minorUnits) {
-      return Promise.reject(
-        new InsufficientFundsError('There is not enough in that account for this transfer.'),
-      );
-    }
-
-    // Instant corridors settle immediately; bank payouts stay pending until
-    // the receiving side confirms.
-    const settlesInstantly = quote.payoutMethod === 'TPay balance';
-
-    const transaction: Transaction = {
-      id: `txn_${transferId}`,
-      type: 'transfer',
-      direction: 'debit',
-      description: quote.recipient.name,
-      amount: quote.totalDebit,
-      occurredAt: createdAt,
-      status: settlesInstantly ? 'completed' : 'pending',
-      accountId: quote.sourceAccountId,
-      reference: transferReference,
-      counterpartyBank: quote.recipient.institution,
-      fee: quote.fee,
-      fxRate: quote.fxRate
-        ? { from: quote.sendAmount.currency, to: quote.receiveAmount.currency, rate: quote.fxRate }
-        : undefined,
-      counterAmount: quote.fxRate ? quote.receiveAmount : undefined,
-    };
-
-    const transfer: Transfer = {
-      ...base,
-      status: settlesInstantly ? 'completed' : 'processing',
-      transactionId: transaction.id,
-    };
-
-    adjustBalance(quote.sourceAccountId, {
-      ...quote.totalDebit,
-      minorUnits: -quote.totalDebit.minorUnits,
+      return respond('transferService.createTransfer', { transfer, transaction });
     });
-    recordTransactions([transaction]);
-    transfers = [transfer, ...transfers];
-    quotes.delete(quoteId);
-
-    return respond('transferService.createTransfer', { transfer, transaction });
   },
 
   getTransfer: (transferId) => {
@@ -643,12 +671,24 @@ export const mockTransferService: TransferService = {
       );
     }
 
+    // A redelivered event must not be applied twice — a returned transfer
+    // credited twice would invent money.
+    if (payload.eventId && appliedEvents.has(payload.eventId)) {
+      return respond('transferService.handleTransferCallback', transfer);
+    }
+
     const status = PROVIDER_STATUS_MAP[payload.providerStatus];
     if (!status) {
-      return Promise.reject(new Error(`Unrecognised provider status "${payload.providerStatus}"`));
+      return Promise.reject(
+        new ProviderUnavailableError(
+          'That payout update could not be read. Nothing has changed.',
+          'transfer.callback',
+        ),
+      );
     }
     // A settled transfer is final; a later callback cannot reopen it.
     if (transfer.status === 'completed' || transfer.status === 'failed') {
+      if (payload.eventId) appliedEvents.add(payload.eventId);
       return respond('transferService.handleTransferCallback', transfer);
     }
 
@@ -675,6 +715,7 @@ export const mockTransferService: TransferService = {
     transfers = transfers.map((candidate) =>
       candidate.id === settled.id ? settled : candidate,
     );
+    if (payload.eventId) appliedEvents.add(payload.eventId);
     return respond('transferService.handleTransferCallback', settled);
   },
 };
@@ -685,4 +726,6 @@ export function resetTransfers(): void {
   knownRecipients = new Map(SEED_RECIPIENTS.map((recipient) => [recipient.id, recipient]));
   transfers = [];
   quotes.clear();
+  appliedEvents.clear();
+  sequence = 0;
 }

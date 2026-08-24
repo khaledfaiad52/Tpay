@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { AccountRestrictedError, meetsRequirement } from '@/services/contracts';
+import { AccountRestrictedError, meetsRequirement, newIdempotencyKey } from '@/services/contracts';
 import { fromMajor } from '@/types';
 import { accountCanTransact, currentAccountState, requireActiveAccount } from './accountGuard';
 import { mockCardService, resetCards } from './cardService';
 import { getAccounts, resetStore } from './data/store';
 import { mockFxService } from './fxService';
 import { resetKyc } from './kycService';
+import { resetIdempotency } from './idempotency';
 import { configureMockBehaviour } from './latency';
 import { mockSecurityService, resetSecurity } from './securityService';
 import { mockTransferService, resetTransfers } from './transferService';
@@ -15,6 +16,7 @@ import { mockTransferService, resetTransfers } from './transferService';
 configureMockBehaviour({ latencyMs: 0, failureRate: 0 });
 
 beforeEach(() => {
+  resetIdempotency();
   resetStore();
   resetSecurity();
   resetTransfers();
@@ -67,7 +69,7 @@ describe('a frozen account cannot move money', () => {
     const priced = await quote();
     await freeze();
     await assert.rejects(
-      () => mockTransferService.createTransfer({ quoteId: priced.id }),
+      () => mockTransferService.createTransfer({ idempotencyKey: newIdempotencyKey(), quoteId: priced.id }),
       AccountRestrictedError,
     );
   });
@@ -100,6 +102,7 @@ describe('a frozen account cannot move money', () => {
     await assert.rejects(
       () =>
         mockCardService.authorizePurchase({
+          idempotencyKey: newIdempotencyKey(),
           cardId: 'card_primary',
           amount: fromMajor(10, 'USD'),
           merchant: 'Panda Hypermarket',
@@ -120,6 +123,7 @@ describe('a frozen account cannot move money', () => {
     assert.ok(await quote());
     assert.ok(
       await mockCardService.authorizePurchase({
+        idempotencyKey: newIdempotencyKey(),
         cardId: 'card_primary',
         amount: fromMajor(10, 'USD'),
         merchant: 'Panda Hypermarket',
@@ -131,6 +135,7 @@ describe('a frozen account cannot move money', () => {
     await freeze();
     await assert.rejects(() =>
       mockCardService.authorizePurchase({
+        idempotencyKey: newIdempotencyKey(),
         cardId: 'card_primary',
         amount: fromMajor(10, 'USD'),
         merchant: 'Panda Hypermarket',

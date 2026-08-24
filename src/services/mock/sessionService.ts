@@ -6,20 +6,23 @@ import {
   TooManyAttemptsError,
   type Credentials,
   type SessionService,
+  type SessionStorage,
   type SignupDraft,
 } from '@/services/contracts';
 import type {
   EmployerConnection,
   OtpChallenge,
   OtpPurpose,
+  PersistedSession,
   Session,
   SessionState,
+  SessionTokens,
   SignupStage,
   SignupState,
 } from '@/types';
 import { mockUser } from './data/fixtures';
 import { respond } from './latency';
-import { passwordProblem } from './securityService';
+import { currentSecuritySettings, passwordProblem } from './securityService';
 import { setKycStatus } from './kycService';
 
 /**
@@ -35,8 +38,19 @@ const DEMO_PASSWORD = 'demo-password';
 /** The only code the mock accepts, so the flows are reproducible. */
 const DEMO_OTP = '419204';
 
-/** How long a session lasts before the app has to ask again. */
-const SESSION_TTL_MS = 30 * 60 * 1000;
+/**
+ * Token lifetimes.
+ *
+ * The access token is short so a leaked one is worth little; the refresh
+ * token is long so the user is not asked to sign in every half hour. A real
+ * backend owns these numbers — they are here so the app can exercise the
+ * lifecycle.
+ */
+const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Where the persisted session is filed in the keychain. */
+const STORAGE_KEY = 'tpay.session.v1';
 
 /** How long a code lasts, and how long before another may be sent. */
 const OTP_TTL_MS = 5 * 60 * 1000;
@@ -50,8 +64,21 @@ const SIGN_IN_LOCKOUT_MS = 5 * 60 * 1000;
 const SIGNED_OUT: SessionState = { status: 'SIGNED_OUT', reason: 'never-signed-in' };
 
 let state: SessionState = SIGNED_OUT;
-/** What a real adapter would keep in secure storage on the device. */
 let storedSession: Session | undefined;
+/**
+ * Where the session survives a restart. Memory until the app supplies the
+ * device keychain, so the adapter never imports a platform module.
+ */
+let storage: SessionStorage = memoryStorage();
+/**
+ * Devices 2FA already trusts. A trusted device signs in with a password
+ * alone; an unrecognised one is challenged for a code.
+ */
+let trustedDevices = new Set<string>();
+/** This install's device id. A real app derives one and keeps it. */
+let deviceId = 'dev_demo_install';
+/** A sign-in waiting on its two-factor code. */
+let pendingSignIn: { challengeId: string; rememberDevice: boolean } | undefined;
 let signup: SignupState | undefined;
 let challenges = new Map<string, OtpChallenge>();
 let failedSignIns = 0;
@@ -67,6 +94,69 @@ const SIGNUP_STAGES: readonly SignupStage[] = [
   'connect-employer',
   'done',
 ];
+
+/** Storage that lasts as long as the process. Replaced at start-up. */
+function memoryStorage(): SessionStorage {
+  const map = new Map<string, string>();
+  return {
+    getItem: (key) => Promise.resolve(map.get(key) ?? null),
+    setItem: (key, value) => {
+      map.set(key, value);
+      return Promise.resolve();
+    },
+    removeItem: (key) => {
+      map.delete(key);
+      return Promise.resolve();
+    },
+    persists: false,
+  };
+}
+
+/**
+ * Writes the minimum needed to resume a session.
+ *
+ * Only the refresh token and the two device preferences. Never a password,
+ * never a one-time code, never an access token — that is re-minted on launch.
+ */
+async function persist(session: Session): Promise<void> {
+  const record: PersistedSession = {
+    sessionId: session.id,
+    userId: session.userId,
+    refreshToken: session.tokens.refreshToken,
+    refreshTokenExpiresAt: session.tokens.refreshTokenExpiresAt,
+    deviceId: session.deviceId,
+    deviceRemembered: session.deviceRemembered,
+    biometricUnlockEnabled: session.biometricUnlockEnabled,
+  };
+  await storage.setItem(STORAGE_KEY, JSON.stringify(record));
+}
+
+async function readPersisted(): Promise<PersistedSession | undefined> {
+  const raw = await storage.getItem(STORAGE_KEY);
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as PersistedSession;
+  } catch {
+    // Unreadable is treated as absent: signing in again beats guessing.
+    return undefined;
+  }
+}
+
+async function clearPersisted(): Promise<void> {
+  await storage.removeItem(STORAGE_KEY);
+}
+
+function mintTokens(): SessionTokens {
+  nextId += 1;
+  const now = Date.now();
+  return {
+    // Opaque and fictional. A real adapter never mints these on the device.
+    accessToken: `demo-access-${nextId}`,
+    accessTokenExpiresAt: new Date(now + ACCESS_TOKEN_TTL_MS).toISOString(),
+    refreshToken: `demo-refresh-${nextId}`,
+    refreshTokenExpiresAt: new Date(now + REFRESH_TOKEN_TTL_MS).toISOString(),
+  };
+}
 
 function normalise(identifier: string): string {
   return identifier.trim().toLowerCase().replace(/[\s()-]/g, '').replace(/^@/, '');
@@ -88,22 +178,23 @@ export function maskDestination(destination: string): string {
 
 function issueSession(method: Session['method'], rememberDevice: boolean): SessionState {
   nextId += 1;
-  const now = Date.now();
   const session: Session = {
     id: `ses_${nextId}`,
     userId: mockUser.id,
-    // Opaque and fictional. A real adapter never mints this on the device.
-    token: `demo-session-token-${nextId}`,
-    issuedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
+    tokens: mintTokens(),
+    issuedAt: new Date().toISOString(),
     method,
     deviceRemembered: rememberDevice,
     biometricUnlockEnabled: storedSession?.biometricUnlockEnabled ?? false,
+    deviceId,
   };
   storedSession = session;
   state = { status: 'AUTHENTICATED', session, reason: 'never-signed-in' };
   failedSignIns = 0;
   lockedUntil = undefined;
+  // Signing in successfully is what makes a device trusted for 2FA.
+  trustedDevices.add(deviceId);
+  void persist(session);
   return state;
 }
 
@@ -168,36 +259,127 @@ function nextStage(stage: SignupStage): SignupStage {
 }
 
 export const mockSessionService: SessionService = {
-  restoreSession: () => {
-    if (!storedSession) {
+  useStorage: (next) => {
+    storage = next;
+  },
+
+  restoreSession: async () => {
+    const persisted = await readPersisted();
+    if (!persisted) {
+      storedSession = undefined;
       state = SIGNED_OUT;
       return respond('sessionService.restoreSession', state);
     }
-    if (Date.parse(storedSession.expiresAt) <= Date.now()) {
+
+    deviceId = persisted.deviceId;
+    // A device that was signed in before is a device 2FA already trusts.
+    trustedDevices.add(persisted.deviceId);
+
+    if (Date.parse(persisted.refreshTokenExpiresAt) <= Date.now()) {
+      // The long token itself has run out: nothing can be refreshed.
+      await clearPersisted();
       storedSession = undefined;
       state = { status: 'SESSION_EXPIRED', reason: 'expired' };
       return respond('sessionService.restoreSession', state);
     }
-    state = { status: 'AUTHENTICATED', session: storedSession, reason: 'never-signed-in' };
+
+    // The access token is never persisted, so launching always mints a fresh
+    // one from the refresh token — exactly what a real client does.
+    nextId += 1;
+    const session: Session = {
+      id: persisted.sessionId,
+      userId: persisted.userId,
+      tokens: {
+        ...mintTokens(),
+        refreshToken: persisted.refreshToken,
+        refreshTokenExpiresAt: persisted.refreshTokenExpiresAt,
+      },
+      issuedAt: new Date().toISOString(),
+      method: 'password',
+      deviceRemembered: persisted.deviceRemembered,
+      biometricUnlockEnabled: persisted.biometricUnlockEnabled,
+      deviceId: persisted.deviceId,
+    };
+    storedSession = session;
+    state = { status: 'AUTHENTICATED', session, reason: 'never-signed-in' };
     return respond('sessionService.restoreSession', state);
+  },
+
+  refreshSession: async () => {
+    const persisted = await readPersisted();
+    const current = storedSession;
+    if (!current || !persisted) {
+      state = SIGNED_OUT;
+      return respond('sessionService.refreshSession', state);
+    }
+
+    if (Date.parse(persisted.refreshTokenExpiresAt) <= Date.now()) {
+      await clearPersisted();
+      storedSession = undefined;
+      state = { status: 'SESSION_EXPIRED', reason: 'expired' };
+      return respond('sessionService.refreshSession', state);
+    }
+
+    // The refresh token is rotated on every use: a stolen one is good for at
+    // most a single exchange, and reuse of an old one is detectable.
+    const refreshed: Session = { ...current, tokens: mintTokens() };
+    storedSession = refreshed;
+    await persist(refreshed);
+    state = { status: 'AUTHENTICATED', session: refreshed, reason: 'never-signed-in' };
+    return respond('sessionService.refreshSession', state);
   },
 
   getSessionState: () => respond('sessionService.getSessionState', state),
 
-  signIn: ({ identifier, password, rememberDevice = false }: Credentials) => {
+  signIn: async ({ identifier, password, rememberDevice = false }: Credentials) => {
     const locked = lockoutError();
-    if (locked) return Promise.reject(locked);
+    if (locked) throw locked;
 
     if (!knownIdentifier(identifier) || password !== DEMO_PASSWORD) {
       failedSignIns += 1;
       if (failedSignIns >= SIGN_IN_MAX_ATTEMPTS) {
         lockedUntil = new Date(Date.now() + SIGN_IN_LOCKOUT_MS).toISOString();
-        return Promise.reject(new TooManyAttemptsError(lockedUntil));
+        throw new TooManyAttemptsError(lockedUntil);
       }
-      return Promise.reject(new InvalidCredentialsError());
+      throw new InvalidCredentialsError();
     }
 
-    return respond('sessionService.signIn', issueSession('password', rememberDevice));
+    // The credentials are right. With two-factor on, whether that is enough
+    // depends on the device: one the account has signed in from before is
+    // trusted, an unrecognised one is challenged.
+    const { twoFactorEnabled } = currentSecuritySettings();
+    const persisted = await readPersisted();
+    const known = trustedDevices.has(deviceId) || persisted?.deviceId === deviceId;
+
+    if (twoFactorEnabled && !known) {
+      const challenge = createChallenge('login', mockUser.phone);
+      pendingSignIn = { challengeId: challenge.id, rememberDevice };
+      return respond('sessionService.signIn', {
+        kind: 'otp-required' as const,
+        challenge,
+      });
+    }
+
+    return respond('sessionService.signIn', {
+      kind: 'session' as const,
+      state: issueSession('password', rememberDevice),
+    });
+  },
+
+  verifySignInChallenge: (challengeId, code) => {
+    if (!pendingSignIn || pendingSignIn.challengeId !== challengeId) {
+      return Promise.reject(new NotFoundError('Verification code', challengeId));
+    }
+    try {
+      judgeOtp(requireChallenge(challengeId), code);
+    } catch (cause) {
+      return Promise.reject(cause);
+    }
+    const { rememberDevice } = pendingSignIn;
+    challenges.delete(challengeId);
+    pendingSignIn = undefined;
+    // Passing the challenge is what makes this device trusted from now on.
+    return respond('sessionService.verifySignInChallenge', issueSession('otp', rememberDevice));
   },
 
   signInWithBiometrics: (attestation) => {
@@ -215,7 +397,10 @@ export const mockSessionService: SessionService = {
     );
   },
 
-  signOut: () => {
+  signOut: async () => {
+    // Signing out is a request to be forgotten: the keychain record goes, and
+    // with it the refresh token and the biometric-unlock preference.
+    await clearPersisted();
     storedSession = undefined;
     signup = undefined;
     state = { status: 'SIGNED_OUT', reason: 'signed-out' };
@@ -350,24 +535,36 @@ export const mockSessionService: SessionService = {
     }
   },
 
-  setBiometricUnlockEnabled: (enabled) => {
+  setBiometricUnlockEnabled: async (enabled) => {
     if (!storedSession) return Promise.reject(new NotFoundError('Session', 'current'));
     storedSession = { ...storedSession, biometricUnlockEnabled: enabled };
+    await persist(storedSession);
     state = { status: 'AUTHENTICATED', session: storedSession, reason: 'never-signed-in' };
     return respond('sessionService.setBiometricUnlockEnabled', state);
   },
 
-  isBiometricUnlockAvailable: () =>
-    respond(
+  isBiometricUnlockAvailable: async () => {
+    // Readable while signed out, because that is exactly when it is asked:
+    // the login screen needs to know before there is a session in memory.
+    const persisted = await readPersisted();
+    return respond(
       'sessionService.isBiometricUnlockAvailable',
-      storedSession?.biometricUnlockEnabled ?? false,
-    ),
+      persisted?.biometricUnlockEnabled ?? storedSession?.biometricUnlockEnabled ?? false,
+    );
+  },
 
-  expireSession: () => {
-    // The device keeps whatever it stored; what changes is that the token is
-    // no longer good, which is exactly what a real expiry looks like.
-    if (storedSession) {
-      storedSession = { ...storedSession, expiresAt: new Date(Date.now() - 1000).toISOString() };
+  expireSession: async () => {
+    // Expires the refresh token too, so this is a real end-of-session rather
+    // than something a refresh could quietly undo.
+    const persisted = await readPersisted();
+    if (persisted) {
+      await storage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...persisted,
+          refreshTokenExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        } satisfies PersistedSession),
+      );
     }
     state = { status: 'SESSION_EXPIRED', reason: 'expired' };
     return respond('sessionService.expireSession', state);
@@ -392,4 +589,8 @@ export function resetSession(): void {
   failedSignIns = 0;
   lockedUntil = undefined;
   nextId = 1000;
+  pendingSignIn = undefined;
+  storage = memoryStorage();
+  trustedDevices = new Set();
+  deviceId = 'dev_demo_install';
 }

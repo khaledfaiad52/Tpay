@@ -2,6 +2,7 @@ import {
   CardDeclinedError,
   InsufficientFundsError,
   NotFoundError,
+  ProviderUnavailableError,
   type CardAuthorization,
   type CardControlsUpdate,
   type CardDeclineCode,
@@ -10,9 +11,12 @@ import {
   type CardService,
 } from '@/services/contracts';
 import {
+  convertMoney,
   fromMajor,
+  negate,
   type Card,
   type CardControls,
+  type CardDeliveryStage,
   type CardReplacement,
   type CardReplacementReason,
   type CardSecrets,
@@ -22,6 +26,7 @@ import {
   type Transaction,
 } from '@/types';
 import { accountRestrictionError } from './accountGuard';
+import { runOnce } from './idempotency';
 import {
   mockCardCategories,
   mockCardControls,
@@ -36,9 +41,40 @@ import {
   getTransactions,
   recordTransactions,
 } from './data/store';
-import { convert, rateBetween } from './fxService';
+import { rateBetween } from './fxService';
 import { respond } from './latency';
 import { totalBalanceOf } from './walletService';
+
+/**
+ * What an issuer's own vocabulary means to TPay.
+ *
+ * Every card adapter owns a table like this, so the app only ever sees a
+ * `CardStatus` — never a processor's status string, and never its name.
+ */
+const PROVIDER_CARD_STATUS_MAP: Record<string, Card['status']> = {
+  produced: 'pending',
+  printing: 'pending',
+  shipped: 'pending',
+  delivered: 'pending',
+  activated: 'active',
+  active: 'active',
+  blocked: 'frozen',
+  suspended: 'frozen',
+  expired: 'expired',
+  closed: 'cancelled',
+  terminated: 'cancelled',
+};
+
+/** Which delivery stage a provider status corresponds to, when it names one. */
+const PROVIDER_DELIVERY_MAP: Record<string, CardDeliveryStage> = {
+  produced: 'printing',
+  printing: 'printing',
+  shipped: 'shipped',
+  delivered: 'delivered',
+};
+
+/** Card events already applied, by the provider's event id. */
+const appliedEvents = new Set<string>();
 
 /** How many virtual cards the account may hold at once, as the design says. */
 const MAX_VIRTUAL_CARDS = 5;
@@ -97,8 +133,7 @@ function spentThisMonth(cardId: string): Money {
 }
 
 function inSpendCurrency(amount: Money): Money {
-  if (amount.currency === SPEND_CURRENCY) return amount;
-  return convert(amount, SPEND_CURRENCY, rateBetween(amount.currency, SPEND_CURRENCY));
+  return convertMoney(amount, SPEND_CURRENCY, rateBetween(amount.currency, SPEND_CURRENCY));
 }
 
 /**
@@ -320,77 +355,81 @@ export const mockCardService: CardService = {
   },
 
   authorizePurchase: (request) => {
-    // The account gate comes first: a freeze or a blocked verification stops
-    // every card at once, whatever any individual card says.
-    const restricted = accountRestrictionError();
-    if (restricted) return Promise.reject(restricted);
+    // A processor that redelivers an authorisation must not debit the wallet
+    // a second time; the same key returns the original transaction.
+    return runOnce('card.authorize', request.idempotencyKey, request, () => {
+      // The account gate comes first: a freeze or a blocked verification stops
+      // every card at once, whatever any individual card says.
+      const restricted = accountRestrictionError();
+      if (restricted) return Promise.reject(restricted);
 
-    const card = find(request.cardId);
-    if (!card) return Promise.reject(new NotFoundError('Card', request.cardId));
+      const card = find(request.cardId);
+      if (!card) return Promise.reject(new NotFoundError('Card', request.cardId));
 
-    const cardControls = controls[card.id];
-    if (!cardControls) return Promise.reject(new NotFoundError('Card controls', card.id));
+      const cardControls = controls[card.id];
+      if (!cardControls) return Promise.reject(new NotFoundError('Card controls', card.id));
 
-    const declined = declineReason(card, cardControls, request);
-    if (declined) return Promise.reject(declined);
+      const declined = declineReason(card, cardControls, request);
+      if (declined) return Promise.reject(declined);
 
-    const limit = limits[card.id];
-    const spend = inSpendCurrency(request.amount);
-    if (limit) {
-      const afterwards = spentThisMonth(card.id).minorUnits + spend.minorUnits;
-      if (afterwards > limit.monthlyLimit.minorUnits) {
+      const limit = limits[card.id];
+      const spend = inSpendCurrency(request.amount);
+      if (limit) {
+        const afterwards = spentThisMonth(card.id).minorUnits + spend.minorUnits;
+        if (afterwards > limit.monthlyLimit.minorUnits) {
+          return Promise.reject(
+            new CardDeclinedError(
+              'monthly-limit-reached',
+              'This payment would take the card over its monthly spending limit.',
+              'Raise the monthly limit in card settings.',
+            ),
+          );
+        }
+        if (request.atm && spend.minorUnits > limit.atmDailyLimit.minorUnits) {
+          return Promise.reject(
+            new CardDeclinedError(
+              'atm-limit-reached',
+              'That is more than the daily ATM limit on this card.',
+              'Raise the ATM limit in card settings.',
+            ),
+          );
+        }
+      }
+
+      // The card spends the wallet balance — the same one every other screen
+      // shows. There is no card float to draw down.
+      const account =
+        findAccountByCurrency(request.amount.currency) ??
+        getAccounts().find((candidate) => candidate.isPrimary);
+      if (!account) return Promise.reject(new NotFoundError('Account', request.amount.currency));
+
+      const settling = findAccount(account.id)!;
+      if (settling.balance.minorUnits < request.amount.minorUnits) {
         return Promise.reject(
-          new CardDeclinedError(
-            'monthly-limit-reached',
-            'This payment would take the card over its monthly spending limit.',
-            'Raise the monthly limit in card settings.',
-          ),
+          new InsufficientFundsError('Your TPay balance does not cover that payment.'),
         );
       }
-      if (request.atm && spend.minorUnits > limit.atmDailyLimit.minorUnits) {
-        return Promise.reject(
-          new CardDeclinedError(
-            'atm-limit-reached',
-            'That is more than the daily ATM limit on this card.',
-            'Raise the ATM limit in card settings.',
-          ),
-        );
-      }
-    }
 
-    // The card spends the wallet balance — the same one every other screen
-    // shows. There is no card float to draw down.
-    const account =
-      findAccountByCurrency(request.amount.currency) ??
-      getAccounts().find((candidate) => candidate.isPrimary);
-    if (!account) return Promise.reject(new NotFoundError('Account', request.amount.currency));
+      const transaction: Transaction = {
+        id: `txn_card_${Date.now()}`,
+        type: 'card',
+        direction: 'debit',
+        description: request.merchant,
+        amount: request.amount,
+        occurredAt: new Date().toISOString(),
+        status: 'completed',
+        accountId: settling.id,
+        cardId: card.id,
+        merchantCategory: request.atm ? 'Cash' : 'Everything else',
+        reference: `TPY-CRD-${String(Date.now()).slice(-4)}`,
+      };
 
-    const settling = findAccount(account.id)!;
-    if (settling.balance.minorUnits < request.amount.minorUnits) {
-      return Promise.reject(
-        new InsufficientFundsError('Your TPay balance does not cover that payment.'),
-      );
-    }
+      adjustBalance(settling.id, negate(request.amount));
+      recordTransactions([transaction]);
+      replace({ ...card, monthToDateSpend: spentThisMonth(card.id) });
 
-    const transaction: Transaction = {
-      id: `txn_card_${Date.now()}`,
-      type: 'card',
-      direction: 'debit',
-      description: request.merchant,
-      amount: request.amount,
-      occurredAt: new Date().toISOString(),
-      status: 'completed',
-      accountId: settling.id,
-      cardId: card.id,
-      merchantCategory: request.atm ? 'Cash' : 'Everything else',
-      reference: `TPY-CRD-${String(Date.now()).slice(-4)}`,
-    };
-
-    adjustBalance(settling.id, { ...request.amount, minorUnits: -request.amount.minorUnits });
-    recordTransactions([transaction]);
-    replace({ ...card, monthToDateSpend: spentThisMonth(card.id) });
-
-    return respond('cardService.authorizePurchase', transaction);
+      return respond('cardService.authorizePurchase', transaction);
+    });
   },
 
   reportLostOrStolen: (cardId, reason: CardReplacementReason) => {
@@ -458,6 +497,47 @@ export const mockCardService: CardService = {
       ) ?? null,
     ),
 
+  handleCardCallback: ({ eventId, cardId, providerStatus, reason }) => {
+    const card = find(cardId);
+    if (!card) return Promise.reject(new NotFoundError('Card', cardId));
+
+    // A redelivered event must not reopen a cancelled card or re-run a stage.
+    if (eventId && appliedEvents.has(eventId)) {
+      return respond('cardService.handleCardCallback', card);
+    }
+
+    const status = PROVIDER_CARD_STATUS_MAP[providerStatus];
+    if (!status) {
+      return Promise.reject(
+        new ProviderUnavailableError(
+          'That card update could not be read. Nothing has changed.',
+          'card.callback',
+        ),
+      );
+    }
+
+    // A cancelled card is final; nothing an issuer says brings it back.
+    if (card.status === 'cancelled') {
+      if (eventId) appliedEvents.add(eventId);
+      return respond('cardService.handleCardCallback', card);
+    }
+
+    const stage = PROVIDER_DELIVERY_MAP[providerStatus];
+    const updated = replace({
+      ...card,
+      status,
+      statusReason: reason ?? card.statusReason,
+      delivery:
+        stage && card.delivery
+          ? { ...card.delivery, stage }
+          : status === 'active'
+            ? undefined
+            : card.delivery,
+    });
+    if (eventId) appliedEvents.add(eventId);
+    return respond('cardService.handleCardCallback', updated);
+  },
+
   activateCard: (cardId, authorization: CardAuthorization) => {
     const card = find(cardId);
     if (!card) return Promise.reject(new NotFoundError('Card', cardId));
@@ -514,6 +594,7 @@ function addDays(iso: string, days: number): string {
 }
 
 export function resetCards(): void {
+  appliedEvents.clear();
   cards = mockCards.map((card) => ({ ...card }));
   controls = { ...mockCardControls };
   limits = defaultLimits(mockCards);

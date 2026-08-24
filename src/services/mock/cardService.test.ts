@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
-import { CardDeclinedError, InsufficientFundsError, NotFoundError } from '@/services/contracts';
+import {
+  CardDeclinedError,
+  InsufficientFundsError,
+  newIdempotencyKey,
+  NotFoundError,
+} from '@/services/contracts';
 import { fromMajor, type Card, type CardStatus } from '@/types';
 import { declineReason, mockCardService, resetCards } from './cardService';
+import { resetIdempotency } from './idempotency';
 import { getAccounts, getTransactions, resetStore } from './data/store';
 import { configureMockBehaviour } from './latency';
 import { mockSecurityService, resetSecurity } from './securityService';
@@ -15,14 +21,17 @@ beforeEach(() => {
   resetStore();
   resetCards();
   resetSecurity();
+  resetIdempotency();
 });
 
 const service = mockCardService;
 const PHYSICAL = 'card_primary';
 const VIRTUAL = 'card_virtual_1';
 
+/** A fresh purchase: a new key each time, as a real terminal would send. */
 const buy = (cardId: string, major: number, extra: Record<string, boolean> = {}) =>
   service.authorizePurchase({
+    idempotencyKey: newIdempotencyKey('auth'),
     cardId,
     amount: fromMajor(major, 'USD'),
     merchant: 'Panda Hypermarket',
@@ -132,7 +141,7 @@ describe('a frozen card cannot transact', () => {
       () => buy(PHYSICAL, 20),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'card-frozen');
+        assert.equal(error.declineCode, 'card-frozen');
         assert.match(error.message, /frozen/);
         assert.ok(error.remedy);
         return true;
@@ -181,9 +190,14 @@ describe('a frozen card cannot transact', () => {
           internationalPayments: true,
           contactlessPayments: true,
         },
-        { cardId: card.id, amount: fromMajor(10, 'USD'), merchant: 'Anywhere' },
+        {
+          idempotencyKey: newIdempotencyKey('auth'),
+          cardId: card.id,
+          amount: fromMajor(10, 'USD'),
+          merchant: 'Anywhere',
+        },
       );
-      assert.equal(declined?.code, code);
+      assert.equal(declined?.declineCode, code);
     });
   }
 });
@@ -195,7 +209,7 @@ describe('card controls', () => {
       () => buy(PHYSICAL, 20, { online: true }),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'online-payments-off');
+        assert.equal(error.declineCode, 'online-payments-off');
         return true;
       },
     );
@@ -211,7 +225,7 @@ describe('card controls', () => {
       () => buy(PHYSICAL, 20, { international: true }),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'international-payments-off');
+        assert.equal(error.declineCode, 'international-payments-off');
         return true;
       },
     );
@@ -222,7 +236,7 @@ describe('card controls', () => {
       () => buy(VIRTUAL, 20, { atm: true }),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'atm-withdrawals-off');
+        assert.equal(error.declineCode, 'atm-withdrawals-off');
         return true;
       },
     );
@@ -248,7 +262,7 @@ describe('spending limits', () => {
       () => buy(PHYSICAL, 400),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'monthly-limit-reached');
+        assert.equal(error.declineCode, 'monthly-limit-reached');
         return true;
       },
     );
@@ -261,7 +275,7 @@ describe('spending limits', () => {
       () => buy(PHYSICAL, 100, { atm: true }),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'atm-limit-reached');
+        assert.equal(error.declineCode, 'atm-limit-reached');
         return true;
       },
     );
@@ -387,7 +401,7 @@ describe('activating a delivered card', () => {
       () => buy(replacement.replacementCardId!, 20),
       (error: unknown) => {
         assert.ok(error instanceof CardDeclinedError);
-        assert.equal(error.code, 'card-pending');
+        assert.equal(error.declineCode, 'card-pending');
         return true;
       },
     );

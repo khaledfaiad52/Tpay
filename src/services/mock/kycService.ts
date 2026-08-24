@@ -6,6 +6,7 @@ import type {
   KycStep,
   KycStepId,
 } from '@/services/contracts';
+import { ProviderUnavailableError } from '@/services/contracts';
 import type { KycStatus } from '@/types';
 import { mockUser } from './data/fixtures';
 import { respond } from './latency';
@@ -51,6 +52,8 @@ let state: KycState = {
   updatedAt: new Date().toISOString(),
 };
 let progress: Progress = initialProgress(mockUser.kycStatus);
+/** Verification events already applied, so a redelivery is a no-op. */
+let appliedEvents = new Set<string>();
 let details: KycPersonalDetails | undefined;
 let document: KycDocumentSubmission | undefined;
 
@@ -123,11 +126,21 @@ export const mockKycService: KycService = {
     return respond('kycService.submitForReview', advance('SUBMITTED'));
   },
 
-  handleKycCallback: ({ providerStatus, reason }) => {
+  handleKycCallback: ({ eventId, providerStatus, reason }) => {
+    if (eventId && appliedEvents.has(eventId)) {
+      return respond('kycService.handleKycCallback', state);
+    }
+
     const next = PROVIDER_STATUS_MAP[providerStatus];
     if (!next) {
-      return Promise.reject(new Error(`Unrecognised provider status "${providerStatus}"`));
+      return Promise.reject(
+        new ProviderUnavailableError(
+          'That verification update could not be read. Nothing has changed.',
+          'kyc.callback',
+        ),
+      );
     }
+    if (eventId) appliedEvents.add(eventId);
     if (next === 'IN_PROGRESS') {
       // A newly created session has nothing submitted against it yet.
       progress = initialProgress('IN_PROGRESS');
@@ -163,6 +176,7 @@ export function setKycStatus(status: KycStatus, reason?: string): KycState {
 export function resetKyc(): void {
   state = { status: mockUser.kycStatus, updatedAt: new Date().toISOString() };
   progress = initialProgress(mockUser.kycStatus);
+  appliedEvents = new Set();
   details = undefined;
   document = undefined;
 }

@@ -58,8 +58,19 @@ export default function LoginScreen() {
     setBusy(true);
     setError(undefined);
     try {
-      await session.signIn({ identifier: identifier.trim(), password, rememberDevice });
-      // The guard sends the user on; this screen does not navigate itself.
+      const outcome = await session.signIn({
+        identifier: identifier.trim(),
+        password,
+        rememberDevice,
+      });
+      if (outcome.kind === 'otp-required') {
+        // Two-factor is on and this device is not trusted yet.
+        router.push({
+          pathname: '/(auth)/verify',
+          params: { challengeId: outcome.challenge.id, flow: 'login' },
+        });
+      }
+      // Otherwise the guard sends the user on; this screen does not navigate.
     } catch (cause) {
       if (cause instanceof InvalidCredentialsError || cause instanceof TooManyAttemptsError) {
         setError(cause.message);

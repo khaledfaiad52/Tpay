@@ -4,7 +4,18 @@ import type { ProviderId } from './registry';
  * Runtime configuration. Values come from Expo's public env vars so no secret
  * is ever compiled into the bundle — see `.env.example`.
  */
+/**
+ * Which deployment this build is.
+ *
+ * `development` runs on mock adapters and may show demo controls.
+ * `staging` points at a real backend in a sandbox, with real provider
+ * sandboxes behind it. `production` is real money; demo controls are refused
+ * outright rather than merely defaulting off.
+ */
+export type Environment = 'development' | 'staging' | 'production';
+
 export type AppConfig = {
+  readonly environment: Environment;
   /** Which service adapter set backs the app. */
   readonly provider: ProviderId;
   /** Base URL of the TPay backend, once one exists. */
@@ -36,6 +47,14 @@ function readFlag(value: string | undefined): boolean {
   return value === 'true';
 }
 
+function readEnvironment(): Environment {
+  const value = process.env.EXPO_PUBLIC_TPAY_ENV;
+  if (value === 'production' || value === 'staging') return value;
+  // Anything unset or unrecognised is development. A build that means to be
+  // production has to say so.
+  return 'development';
+}
+
 function readProvider(): ProviderId {
   const value = process.env.EXPO_PUBLIC_TPAY_PROVIDER;
   // Only the mock adapter set exists today; anything else falls back to it
@@ -43,12 +62,30 @@ function readProvider(): ProviderId {
   return value === 'mock' ? 'mock' : 'mock';
 }
 
+const environment = readEnvironment();
+
+/**
+ * Demo controls are impossible in production, not merely off by default.
+ *
+ * A flag left set in a production build would otherwise ship a way to fake a
+ * verification outcome or a card payment. The environment wins over the flag.
+ */
+function demoFlag(value: string | undefined): boolean {
+  return environment !== 'production' && readFlag(value);
+}
+
 export const appConfig: AppConfig = {
+  environment,
   provider: readProvider(),
   apiBaseUrl: process.env.EXPO_PUBLIC_TPAY_API_BASE_URL,
   demo: {
-    kyc: readFlag(process.env.EXPO_PUBLIC_ENABLE_KYC_DEMO),
-    card: readFlag(process.env.EXPO_PUBLIC_ENABLE_CARD_DEMO),
-    session: readFlag(process.env.EXPO_PUBLIC_ENABLE_SESSION_DEMO),
+    kyc: demoFlag(process.env.EXPO_PUBLIC_ENABLE_KYC_DEMO),
+    card: demoFlag(process.env.EXPO_PUBLIC_ENABLE_CARD_DEMO),
+    session: demoFlag(process.env.EXPO_PUBLIC_ENABLE_SESSION_DEMO),
   },
 };
+
+/** True when this build talks to real money. */
+export function isProduction(): boolean {
+  return appConfig.environment === 'production';
+}

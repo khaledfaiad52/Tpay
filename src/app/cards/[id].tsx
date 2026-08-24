@@ -33,6 +33,7 @@ import {
 import { useCardDetail, useRefreshOnFocus } from '@/hooks';
 import { Icon } from '@/icons';
 import { services } from '@/services';
+import { resolveConfirmation } from '@/services/device';
 import type { CardControlsUpdate } from '@/services';
 import { colors, radius, spacing } from '@/theme';
 import type { CardSecrets } from '@/types';
@@ -98,9 +99,14 @@ export default function CardDetailScreen() {
   const revealDetails = async () => {
     setBusy(true);
     try {
-      // Confirmed by tapping today. A PIN pad, device biometrics or a 3-D
-      // Secure challenge each become another `method` here.
-      const revealed = await services.card.revealCardDetails(card.id, { method: 'tap' });
+      // Showing a full card number is worth a real check when the user has
+      // one available; it falls back to the tap confirmation when not.
+      const settings = await services.security.getSettings();
+      const confirmation = await resolveConfirmation(
+        'Show your card details',
+        settings.biometricsEnabled,
+      );
+      const revealed = await services.card.revealCardDetails(card.id, confirmation);
       setSecrets(revealed);
       showToast('Card details shown for 60 seconds');
     } catch (cause) {
@@ -114,7 +120,14 @@ export default function CardDetailScreen() {
     run(() => services.card.updateControls(card.id, update));
 
   const activate = () =>
-    run(() => services.card.activateCard(card.id, { method: 'tap' }), 'Card activated');
+    run(async () => {
+      const settings = await services.security.getSettings();
+      const confirmation = await resolveConfirmation(
+        'Activate your TPay card',
+        settings.biometricsEnabled,
+      );
+      return services.card.activateCard(card.id, confirmation);
+    }, 'Card activated');
 
   return (
     <Screen contentStyle={styles.content}>

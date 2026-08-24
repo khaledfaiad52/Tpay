@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Eyebrow, Tappable, Text, useToast } from '@/components/ui';
-import { appConfig, CardDeclinedError, services } from '@/services';
+import { appConfig, CardDeclinedError, newIdempotencyKey, services } from '@/services';
 import { fromMajor, type Money } from '@/types';
 import { colors, radius } from '@/theme';
 
@@ -53,6 +53,8 @@ export function CardDemoControls({ cardId, onApplied }: CardDemoControlsProps) {
     setBusy(true);
     try {
       await services.card.authorizePurchase({
+        // A terminal generates one of these per authorisation attempt.
+        idempotencyKey: newIdempotencyKey('auth'),
         cardId,
         amount: purchase.amount,
         merchant: purchase.merchant,

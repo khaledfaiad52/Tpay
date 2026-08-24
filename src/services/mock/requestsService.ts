@@ -2,6 +2,7 @@ import { NotFoundError } from '@/services/contracts';
 import type { RequestsService } from '@/services/contracts';
 import type { EmployeeRequest, RequestDraft, RequestStage, RequestStatus, RequestType } from '@/types';
 import { mockRequests } from './data/fixtures';
+import { formatMoney } from '@/utils';
 import { respond } from './latency';
 
 /** The four stages every request passes through, in order. */
@@ -44,7 +45,9 @@ export function stagesFor(status: RequestStatus): readonly RequestStage[] {
 export function titleFor(draft: RequestDraft): string {
   const base = TITLES[draft.type];
   if (draft.amount) {
-    return `${base} · ${draft.amount.currency} ${draft.amount.minorUnits / 100}`;
+    // Formatting lives in one place; dividing by 100 here would be wrong for
+    // any currency that is not two-decimal, and unformatted besides.
+    return `${base} · ${formatMoney(draft.amount)}`;
   }
   if (draft.addressedTo) return `${base} · ${draft.addressedTo}`;
   return base;
